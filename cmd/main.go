@@ -6,8 +6,8 @@ import (
 	"fmt"
 
 	"github.com/gin-gonic/gin"
-	"github.com/golang-jwt/jwt/v5"
 	_ "github.com/go-sql-driver/mysql"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/redis/go-redis/v9"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
@@ -100,12 +100,12 @@ func main() {
 	// }
 
 	// 引用确保依赖被保留
-	_ = sql.Drivers      // 引用sql标准库
-	_ = mysql.Open       // 引用mysql驱动确保依赖被保留
-	_ = gorm.Config{}    // 引用gorm确保依赖被保留
-	_ = &redis.Options{} // 引用redis客户端确保依赖被保留
+	_ = sql.Drivers            // 引用sql标准库
+	_ = mysql.Open             // 引用mysql驱动确保依赖被保留
+	_ = gorm.Config{}          // 引用gorm确保依赖被保留
+	_ = &redis.Options{}       // 引用redis客户端确保依赖被保留
 	_ = jwt.SigningMethodHS256 // 引用JWT确保依赖被保留
-	_ = context.TODO     // 引用context包
+	_ = context.TODO           // 引用context包
 
 	// 创建Gin引擎
 	r := gin.Default()

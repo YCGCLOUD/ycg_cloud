@@ -1,0 +1,124 @@
+name: Code Quality Check
+
+on:
+  push:
+    branches: [ main, master, develop ]
+  pull_request:
+    branches: [ main, master, develop ]
+
+jobs:
+  quality-check:
+    name: 代码质量检查
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 检出代码
+      uses: actions/checkout@v4
+      
+    - name: 设置Go环境
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.23.12'
+        
+    - name: 缓存Go模块
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cache/go-build
+          ~/go/pkg/mod
+        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-
+          
+    - name: 下载依赖
+      run: go mod download
+      
+    - name: 验证模块
+      run: go mod verify
+      
+    - name: 代码格式检查
+      run: |
+        if [ "$(gofmt -s -l . | wc -l)" -gt 0 ]; then
+          echo "❌ 以下文件需要格式化:"
+          gofmt -s -l .
+          exit 1
+        fi
+        echo "✅ 代码格式检查通过"
+        
+    - name: 安装代码检查工具
+      run: |
+        go install golang.org/x/lint/golint@latest
+        go install honnef.co/go/tools/cmd/staticcheck@latest
+        
+    - name: 代码规范检查 (golint)
+      run: |
+        golint_output=$(golint ./...)
+        if [ -n "$golint_output" ]; then
+          echo "❌ golint发现问题:"
+          echo "$golint_output"
+          exit 1
+        fi
+        echo "✅ golint检查通过"
+        
+    - name: 静态分析 (go vet)
+      run: |
+        go vet ./...
+        echo "✅ go vet检查通过"
+        
+    - name: 高级静态分析 (staticcheck)
+      run: |
+        staticcheck ./...
+        echo "✅ staticcheck检查通过"
+        
+    - name: 构建测试
+      run: |
+        go build -v ./...
+        echo "✅ 构建测试通过"
+        
+    - name: 运行测试
+      run: |
+        go test -v ./...
+        echo "✅ 单元测试通过"
+        
+    - name: 测试覆盖率检查
+      run: |
+        go test -coverprofile=coverage.out ./...
+        coverage=$(go tool cover -func=coverage.out | grep "total:" | awk '{print $3}' | sed 's/%//')
+        echo "当前测试覆盖率: ${coverage}%"
+        
+        if (( $(echo "$coverage >= 80" | bc -l) )); then
+          echo "✅ 测试覆盖率达标: ${coverage}% (要求≥80%)"
+        else
+          echo "❌ 测试覆盖率不达标: ${coverage}% (要求≥80%)"
+          exit 1
+        fi
+        
+    - name: 上传覆盖率报告
+      uses: actions/upload-artifact@v3
+      with:
+        name: coverage-report
+        path: coverage.out
+        
+  security-check:
+    name: 安全扫描
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 检出代码
+      uses: actions/checkout@v4
+      
+    - name: 设置Go环境
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.23.12'
+        
+    - name: 运行Gosec安全扫描
+      uses: securecodewarrior/github-action-gosec@master
+      with:
+        args: '-fmt sarif -out results.sarif ./...'
+        
+    - name: 上传安全扫描结果
+      uses: github/codeql-action/upload-sarif@v2
+      if: always()
+      with:
+        sarif_file: results.sarif

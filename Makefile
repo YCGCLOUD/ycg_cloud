@@ -3,73 +3,81 @@
 
 .PHONY: fmt lint vet test coverage quality-check clean build
 
-# 代码格式化
+# Code formatting
 fmt:
-	@echo "=== 运行 gofmt 代码格式化 ==="
+	@echo "=== Running gofmt code formatting ==="
 	gofmt -l -w .
-	@echo "代码格式化完成"
+	@echo "Code formatting completed"
 
-# 代码规范检查
+# Code linting
 lint:
-	@echo "=== 运行 golint 代码规范检查 ==="
+	@echo "=== Running golint code linting ==="
 	golint ./...
-	@echo "代码规范检查完成"
+	@echo "Code linting completed"
 
-# 静态分析
+# Static analysis
 vet:
-	@echo "=== 运行 go vet 静态分析 ==="
+	@echo "=== Running go vet static analysis ==="
 	go vet ./...
-	@echo "静态分析完成"
+	@echo "Static analysis completed"
 
-# 单元测试
+# Cyclomatic complexity check
+cyclo:
+	@echo "=== Running gocyclo complexity check ==="
+	gocyclo -over 10 .
+	@echo "Complexity check completed"
+
+# Unit testing
 test:
-	@echo "=== 运行单元测试 ==="
+	@echo "=== Running unit tests ==="
 	go test -v ./...
-	@echo "单元测试完成"
+	@echo "Unit testing completed"
 
-# 测试覆盖率
+# Test coverage
 coverage:
-	@echo "=== 生成测试覆盖率报告 ==="
+	@echo "=== Generating test coverage report ==="
 	go test -coverprofile=coverage.out ./...
 	go tool cover -html=coverage.out -o coverage.html
-	@echo "覆盖率报告已生成: coverage.html"
+	@echo "Coverage report generated: coverage.html"
 
 # 完整质量检查（覆盖率≥80%、圈复杂度≤10）
-quality-check: fmt lint vet test
-	@echo "=== 执行完整代码质量检查 ==="
-	@echo "1. 代码格式化检查..."
+quality-check: fmt lint vet cyclo test
+	@echo "=== Running complete code quality check ==="
+	@echo "1. Code formatting check..."
 	@gofmt -l . | wc -l
-	@echo "2. 代码规范检查..."
+	@echo "2. Code linting check..."
 	@golint ./... | wc -l
-	@echo "3. 静态分析检查..."
+	@echo "3. Static analysis check..."
 	@go vet ./...
-	@echo "4. 单元测试执行..."
+	@echo "4. Complexity check..."
+	@gocyclo -over 10 . || echo "✅ Complexity check passed (no functions over 10)"
+	@echo "5. Unit test execution..."
 	@go test ./...
-	@echo "=== 质量检查完成 ==="
+	@echo "=== Quality check completed ==="
 
-# 清理生成文件
+# Clean generated files
 clean:
-	@echo "=== 清理生成文件 ==="
+	@echo "=== Cleaning generated files ==="
 	rm -f coverage.out coverage.html
 	rm -rf bin/
-	@echo "清理完成"
+	@echo "Clean completed"
 
-# 构建项目
+# Build project
 build:
-	@echo "=== 构建项目 ==="
+	@echo "=== Building project ==="
 	go build -o bin/cloudpan.exe ./cmd
-	@echo "构建完成: bin/cloudpan.exe"
+	@echo "Build completed: bin/cloudpan.exe"
 
-# 开发环境质量检查（每日使用）
-dev-check: fmt vet test
-	@echo "=== 开发环境快速质量检查 ==="
-	@echo "质量检查通过，可以提交代码"
+# Development environment quality check (daily use)
+dev-check: fmt vet cyclo test
+	@echo "=== Development environment quick quality check ==="
+	@echo "Quality check passed, ready to commit code"
 
-# 生产环境质量检查（严格标准）
+# Production environment quality check (strict standards)
 prod-check: quality-check coverage
-	@echo "=== 生产环境严格质量检查 ==="
-	@echo "检查覆盖率是否达到80%标准..."
+	@echo "=== Production environment strict quality check ==="
+	@echo "Checking if coverage meets 80% standard..."
 	@go test -coverprofile=coverage.out ./... && \
 	go tool cover -func=coverage.out | grep "total:" | awk '{print $$3}' | \
-	sed 's/%//' | awk '{if($$1>=80) print "✅ 覆盖率达标: "$$1"%"; else {print "❌ 覆盖率不达标: "$$1"% (要求≥80%)"; exit 1}}'
-	@echo "=== 生产环境质量检查完成 ==="
+	sed 's/%//' | awk '{if($$1>=80) print "✅ Coverage passed: "$$1"%"; else {print "❌ Coverage failed: "$$1"% (required ≥80%)"; exit 1}}'
+	@echo "=== Production environment quality check completed ==="

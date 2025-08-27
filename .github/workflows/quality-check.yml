@@ -49,6 +49,7 @@ jobs:
       run: |
         go install golang.org/x/lint/golint@latest
         go install honnef.co/go/tools/cmd/staticcheck@latest
+        go install github.com/fzipp/gocyclo/cmd/gocyclo@latest
         
     - name: 代码规范检查 (golint)
       run: |
@@ -69,6 +70,16 @@ jobs:
       run: |
         staticcheck ./...
         echo "✅ staticcheck检查通过"
+        
+    - name: 圈复杂度检查 (gocyclo)
+      run: |
+        complexity_violations=$(gocyclo -over 10 . | wc -l)
+        if [ $complexity_violations -gt 0 ]; then
+          echo "❌ 发现圈复杂度超过10的函数:"
+          gocyclo -over 10 .
+          exit 1
+        fi
+        echo "✅ 圈复杂度检查通过"
         
     - name: 构建测试
       run: |

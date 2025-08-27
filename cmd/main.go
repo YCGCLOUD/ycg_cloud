@@ -1,11 +1,13 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 
 	"github.com/gin-gonic/gin"
 	_ "github.com/go-sql-driver/mysql"
+	"github.com/redis/go-redis/v9"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 )
@@ -17,6 +19,7 @@ func main() {
 	fmt.Println("Gin框架: 已添加")
 	fmt.Println("Gorm ORM: 已添加")
 	fmt.Println("MySQL驱动: 已添加 (支持MySQL 8.0.31)")
+	fmt.Println("Redis客户端: 已添加 (支持Redis 7.0.6)")
 
 	// MySQL 8.0.31 直接连接示例（注释掉实际连接）
 	// MySQL 8.0.31 连接字符串示例：
@@ -38,10 +41,41 @@ func main() {
 	//     fmt.Println("Gorm MySQL 8.0.31 连接成功")
 	// }
 
+	// Redis 7.0.6 客户端连接示例（注释掉实际连接）
+	// Redis 7.0.6 连接配置：
+	// rdb := redis.NewClient(&redis.Options{
+	//     Addr:     "localhost:6379",
+	//     Password: "", // 无密码
+	//     DB:       0,  // 默认数据库
+	//     Protocol: 3,  // Redis 7.0.6 支持RESP3协议
+	// })
+	// ctx := context.Background()
+	// pong, err := rdb.Ping(ctx).Result()
+	// if err != nil {
+	//     fmt.Println("Redis 7.0.6 连接失败:", err)
+	// } else {
+	//     fmt.Println("Redis 7.0.6 连接成功:", pong)
+	// }
+
+	// Redis Stream 消息队列示例（支持Redis 7.0.6新特性）
+	// streamName := "cloudpan:events"
+	// 添加消息到Stream
+	// xaddResult := rdb.XAdd(ctx, &redis.XAddArgs{
+	//     Stream: streamName,
+	//     Values: map[string]interface{}{
+	//         "event": "file_upload",
+	//         "user_id": "123",
+	//         "timestamp": time.Now().Unix(),
+	//     },
+	// })
+	// fmt.Println("Redis Stream 消息添加:", xaddResult.Val())
+
 	// 引用确保依赖被保留
-	_ = sql.Drivers   // 引用sql标准库
-	_ = mysql.Open    // 引用mysql驱动确保依赖被保留
-	_ = gorm.Config{} // 引用gorm确保依赖被保留
+	_ = sql.Drivers      // 引用sql标准库
+	_ = mysql.Open       // 引用mysql驱动确保依赖被保留
+	_ = gorm.Config{}    // 引用gorm确保依赖被保留
+	_ = &redis.Options{} // 引用redis客户端确保依赖被保留
+	_ = context.TODO     // 引用context包
 
 	// 创建Gin引擎
 	r := gin.Default()

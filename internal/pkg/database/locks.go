@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"log"
 	"math/big"
+	"regexp"
+	"strings"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -14,6 +16,39 @@ import (
 
 	"cloudpan/internal/pkg/config"
 )
+
+// validateTableName 验证表名安全性，防止SQL注入
+func validateTableName(tableName string) error {
+	// 检查表名是否为空
+	if strings.TrimSpace(tableName) == "" {
+		return fmt.Errorf("table name cannot be empty")
+	}
+
+	// 使用正则表达式验证表名格式（只允许字母、数字和下划线）
+	tableNameRegex := regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*$`)
+	if !tableNameRegex.MatchString(tableName) {
+		return fmt.Errorf("invalid table name format: %s", tableName)
+	}
+
+	// 检查表名长度
+	if len(tableName) > 64 {
+		return fmt.Errorf("table name too long: %s", tableName)
+	}
+
+	// 检查是否包含SQL关键字（简单黑名单）
+	sqlKeywords := []string{
+		"SELECT", "INSERT", "UPDATE", "DELETE", "DROP", "CREATE", "ALTER",
+		"UNION", "WHERE", "ORDER", "GROUP", "HAVING", "EXEC", "EXECUTE",
+	}
+	upper := strings.ToUpper(tableName)
+	for _, keyword := range sqlKeywords {
+		if upper == keyword {
+			return fmt.Errorf("table name cannot be SQL keyword: %s", tableName)
+		}
+	}
+
+	return nil
+}
 
 // IsolationLevel 事务隔离级别枚举
 type IsolationLevel int
@@ -112,11 +147,26 @@ func NewDatabaseLockManager(db *gorm.DB) *DatabaseLockManager {
 }
 
 // AcquirePessimisticLock 获取悲观锁
+// 注意：tableName 必须是可信的表名，不能来自用户输入
 func (dlm *DatabaseLockManager) AcquirePessimisticLock(ctx context.Context, tx *gorm.DB, tableName string, lockType LockType, where string, args ...interface{}) error {
-	query := fmt.Sprintf("SELECT 1 FROM %s WHERE %s %s", tableName, where, lockType.String())
+	// 验证表名安全性（防止SQL注入）
+	if err := validateTableName(tableName); err != nil {
+		return fmt.Errorf("invalid table name: %w", err)
+	}
 
+	// 使用GORM的查询构建器而不是直接字符串拼接
 	var result int
-	if err := tx.WithContext(ctx).Raw(query, args...).Scan(&result).Error; err != nil {
+	query := tx.WithContext(ctx).Table(tableName).Select("1").Where(where, args...)
+
+	// 添加锁提示（使用tagged switch优化）
+	switch lockType {
+	case SharedLock:
+		query = query.Set("gorm:query_option", "FOR SHARE")
+	case ExclusiveLock:
+		query = query.Set("gorm:query_option", "FOR UPDATE")
+	}
+
+	if err := query.Scan(&result).Error; err != nil {
 		return fmt.Errorf("failed to acquire pessimistic lock: %w", err)
 	}
 

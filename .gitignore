@@ -39,10 +39,16 @@ build/
 dist/
 
 # Configuration files with sensitive data
-*.env
+.env.dev
+.env.prod
+.env.test
 *.local
 config/local.yml
 config/production.yml
+
+# Allow example configuration files
+!.env.example
+!config.example.yaml
 
 # Log files
 *.log
@@ -101,3 +107,7 @@ storage/uploads/*
 !storage/uploads/.gitkeep
 storage/logs/*
 !storage/logs/.gitkeep
+
+# Security scan reports
+security_report.json
+*.security_report.json

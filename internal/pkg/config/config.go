@@ -22,6 +22,13 @@ func Load() error {
 		env = "development"
 	}
 
+	// 映射环境名称到配置文件名
+	envFileMap := map[string]string{
+		"development": "dev",
+		"testing":     "test",
+		"production":  "prod",
+	}
+
 	// 设置配置文件搜索路径
 	viper.AddConfigPath("./configs")
 	viper.AddConfigPath("../configs")
@@ -38,7 +45,11 @@ func Load() error {
 	}
 
 	// 如果存在环境特定配置文件，则合并配置
-	envConfigName := fmt.Sprintf("config.%s", env)
+	envConfigSuffix := envFileMap[env]
+	if envConfigSuffix == "" {
+		envConfigSuffix = env // 如果没有映射，直接使用原环境名
+	}
+	envConfigName := fmt.Sprintf("config.%s", envConfigSuffix)
 	viper.SetConfigName(envConfigName)
 
 	// 尝试读取环境特定配置（不是必须的）
@@ -132,53 +143,62 @@ func validateConfig(cfg *Config) error {
 	return nil
 }
 
-// validateAppConfig 验证应用配置
-func validateAppConfig(cfg *Config) error {
-	if cfg.App.Name == "" {
-		return fmt.Errorf("app.name is required")
+// validateRequired 通用的必填字段验证函数
+func validateRequired(fieldName, value string) error {
+	if value == "" {
+		return fmt.Errorf("%s is required", fieldName)
 	}
 	return nil
+}
+
+// validateRange 验证数值范围
+func validateRange(fieldName string, value, min, max int) error {
+	if value < min || value > max {
+		return fmt.Errorf("%s must be between %d and %d", fieldName, min, max)
+	}
+	return nil
+}
+
+// validateMinLength 验证最小长度
+func validateMinLength(fieldName, value string, minLength int) error {
+	if len(value) < minLength {
+		return fmt.Errorf("%s must be at least %d characters long", fieldName, minLength)
+	}
+	return nil
+}
+
+// validateAppConfig 验证应用配置
+func validateAppConfig(cfg *Config) error {
+	return validateRequired("app.name", cfg.App.Name)
 }
 
 // validateServerConfig 验证服务器配置
 func validateServerConfig(cfg *Config) error {
-	if cfg.Server.Port <= 0 || cfg.Server.Port > 65535 {
-		return fmt.Errorf("server.port must be between 1 and 65535")
-	}
-	return nil
+	return validateRange("server.port", cfg.Server.Port, 1, 65535)
 }
 
 // validateDatabaseConfig 验证数据库配置
 func validateDatabaseConfig(cfg *Config) error {
-	if cfg.Database.MySQL.Host == "" {
-		return fmt.Errorf("database.mysql.host is required")
+	if err := validateRequired("database.mysql.host", cfg.Database.MySQL.Host); err != nil {
+		return err
 	}
-	if cfg.Database.MySQL.Username == "" {
-		return fmt.Errorf("database.mysql.username is required")
+	if err := validateRequired("database.mysql.username", cfg.Database.MySQL.Username); err != nil {
+		return err
 	}
-	if cfg.Database.MySQL.DBName == "" {
-		return fmt.Errorf("database.mysql.dbname is required")
-	}
-	return nil
+	return validateRequired("database.mysql.dbname", cfg.Database.MySQL.DBName)
 }
 
 // validateRedisConfig 验证Redis配置
 func validateRedisConfig(cfg *Config) error {
-	if cfg.Redis.Host == "" {
-		return fmt.Errorf("redis.host is required")
-	}
-	return nil
+	return validateRequired("redis.host", cfg.Redis.Host)
 }
 
 // validateJWTConfig 验证JWT配置
 func validateJWTConfig(cfg *Config) error {
-	if cfg.JWT.Secret == "" {
-		return fmt.Errorf("jwt.secret is required")
+	if err := validateRequired("jwt.secret", cfg.JWT.Secret); err != nil {
+		return err
 	}
-	if len(cfg.JWT.Secret) < 32 {
-		return fmt.Errorf("jwt.secret must be at least 32 characters long")
-	}
-	return nil
+	return validateMinLength("jwt.secret", cfg.JWT.Secret, 32)
 }
 
 // validateStorageConfig 验证存储配置
@@ -283,6 +303,12 @@ func GetDSN() string {
 	}
 
 	mysql := AppConfig.Database.MySQL
+	// 解决URL编码问题，对loc参数进行特殊处理
+	loc := mysql.Loc
+	if loc == "Local" {
+		loc = "Local" // 保持不变，MySQL驱动会自动处理
+	}
+
 	// 根据记忆中的MySQL 8.0.31要求，添加allowNativePasswords=true参数
 	return fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?charset=%s&parseTime=%t&loc=%s&allowNativePasswords=true",
 		mysql.Username,
@@ -292,7 +318,7 @@ func GetDSN() string {
 		mysql.DBName,
 		mysql.Charset,
 		mysql.ParseTime,
-		mysql.Loc,
+		loc,
 	)
 }
 
@@ -316,10 +342,23 @@ func GetServerAddr() string {
 
 // loadEnvFile 加载环境特定的.env文件并设置到环境变量
 func loadEnvFile(env string) error {
+	// 映射环境名称到.env文件后缀
+	envFileMap := map[string]string{
+		"development": "dev",
+		"testing":     "test",
+		"production":  "prod",
+	}
+
+	// 获取映射后的文件后缀
+	envFileSuffix := envFileMap[env]
+	if envFileSuffix == "" {
+		envFileSuffix = env // 如果没有映射，直接使用原环境名
+	}
+
 	// 尝试加载环境特定的.env文件
 	envFiles := []string{
-		fmt.Sprintf(".env.%s", env), // .env.dev
-		".env",                      // 通用.env文件
+		fmt.Sprintf(".env.%s", envFileSuffix), // .env.dev
+		".env",                                // 通用.env文件
 	}
 
 	for _, envFile := range envFiles {

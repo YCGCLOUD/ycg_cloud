@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"regexp"
 	"time"
 
 	"gorm.io/gorm"
@@ -46,6 +47,17 @@ var DefaultQueryOptions = &QueryOptions{
 	Page:  1,
 	Size:  20,
 	Order: "desc",
+}
+
+// fieldNameRegex 字段名验证正则表达式（仅允许字母、数字、下划线和点号）
+var fieldNameRegex = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_.]*$`)
+
+// isValidFieldName 验证字段名是否安全
+func isValidFieldName(field string) bool {
+	if field == "" || len(field) > 64 {
+		return false
+	}
+	return fieldNameRegex.MatchString(field)
 }
 
 // Transaction 执行事务
@@ -147,8 +159,9 @@ func applyFilters(query *gorm.DB, filters map[string]interface{}) *gorm.DB {
 	}
 
 	for field, value := range filters {
-		if value != nil {
-			query = query.Where(fmt.Sprintf("%s = ?", field), value)
+		if value != nil && isValidFieldName(field) {
+			// 使用GORM的Where方法，更安全且性能更好
+			query = query.Where(field+" = ?", value)
 		}
 	}
 
@@ -157,17 +170,17 @@ func applyFilters(query *gorm.DB, filters map[string]interface{}) *gorm.DB {
 
 // applySorting 应用排序
 func applySorting(query *gorm.DB, sort, order string) *gorm.DB {
-	if sort == "" {
+	if sort == "" || !isValidFieldName(sort) {
 		return query
 	}
 
-	orderClause := sort
-	if order == "asc" || order == "desc" {
-		orderClause += " " + order
-	} else {
-		orderClause += " desc"
+	// 验证排序方向
+	if order != "asc" && order != "desc" {
+		order = "desc"
 	}
 
+	// 直接拼接，避免使用fmt.Sprintf
+	orderClause := sort + " " + order
 	return query.Order(orderClause)
 }
 
@@ -296,7 +309,9 @@ func GetOrCreate(db *gorm.DB, model interface{}, where map[string]interface{}) e
 	// 先尝试查找
 	query := db
 	for field, value := range where {
-		query = query.Where(fmt.Sprintf("%s = ?", field), value)
+		if isValidFieldName(field) {
+			query = query.Where(field+" = ?", value)
+		}
 	}
 
 	if err := query.First(model).Error; err != nil {
@@ -330,7 +345,9 @@ func Exists(db *gorm.DB, model interface{}, where ...interface{}) (bool, error) 
 func FirstOrCreate(db *gorm.DB, model interface{}, where map[string]interface{}) error {
 	query := db
 	for field, value := range where {
-		query = query.Where(fmt.Sprintf("%s = ?", field), value)
+		if isValidFieldName(field) {
+			query = query.Where(field+" = ?", value)
+		}
 	}
 
 	return query.FirstOrCreate(model).Error

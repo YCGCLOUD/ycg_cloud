@@ -1,7 +1,7 @@
 # HXLOS Cloud Storage - 代码质量检查 Makefile
 # 开发计划第2天：代码质量检查工具配置
 
-.PHONY: fmt lint vet test coverage quality-check clean build
+.PHONY: fmt lint vet sec test coverage quality-check clean build
 
 # Code formatting
 fmt:
@@ -27,6 +27,12 @@ cyclo:
 	gocyclo -over 10 .
 	@echo "Complexity check completed"
 
+# Security vulnerability scan
+sec:
+	@echo "=== Running gosec security scan ==="
+	gosec ./...
+	@echo "Security scan completed"
+
 # Unit testing
 test:
 	@echo "=== Running unit tests ==="
@@ -40,8 +46,8 @@ coverage:
 	go tool cover -html=coverage.out -o coverage.html
 	@echo "Coverage report generated: coverage.html"
 
-# 完整质量检查（覆盖率≥80%、圈复杂度≤10）
-quality-check: fmt lint vet cyclo test
+# 完整质量检查（覆盖率≥80%、圈复杂度≤10、安全漏洞扫描）
+quality-check: fmt lint vet cyclo sec test
 	@echo "=== Running complete code quality check ==="
 	@echo "1. Code formatting check..."
 	@gofmt -l . | wc -l
@@ -51,7 +57,9 @@ quality-check: fmt lint vet cyclo test
 	@go vet ./...
 	@echo "4. Complexity check..."
 	@gocyclo -over 10 . || echo "✅ Complexity check passed (no functions over 10)"
-	@echo "5. Unit test execution..."
+	@echo "5. Security vulnerability scan..."
+	@gosec ./... || echo "⚠️ Security issues found, please review"
+	@echo "6. Unit test execution..."
 	@go test ./...
 	@echo "=== Quality check completed ==="
 
@@ -69,7 +77,7 @@ build:
 	@echo "Build completed: bin/cloudpan.exe"
 
 # Development environment quality check (daily use)
-dev-check: fmt vet cyclo test
+dev-check: fmt vet cyclo sec test
 	@echo "=== Development environment quick quality check ==="
 	@echo "Quality check passed, ready to commit code"
 

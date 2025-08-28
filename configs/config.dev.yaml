@@ -1,0 +1,84 @@
+# HXLOS Cloud Storage - 开发环境配置
+# 只包含开发环境特有的配置差异，会覆盖默认配置
+
+# 应用环境配置
+app:
+  env: "development"
+  debug: true
+
+# 服务器配置
+server:
+  host: "0.0.0.0"
+  port: 8080
+  mode: "debug"
+
+# 数据库配置（非敏感部分）
+database:
+  mysql:
+    host: "dbconn.sealosbja.site"
+    port: 41277
+    dbname: "cloudpan_dev"
+    
+# Redis配置（非敏感部分）
+redis:
+  host: "dbconn.sealosbja.site"
+  port: 38650
+  db: 1  # 使用DB1避免与其他服务冲突
+
+# 存储配置
+storage:
+  local:
+    enabled: true
+    root_path: "./storage/dev"
+    temp_path: "./storage/dev/temp"
+  oss:
+    enabled: false  # 开发环境默认不启用OSS
+
+# 用户配置（开发环境限制）
+user:
+  default_quota: 1073741824  # 1GB，开发环境限制
+  password:
+    bcrypt_cost: 4  # 降低加密成本，提高开发效率
+
+# 邮件配置（非敏感部分）
+email:
+  smtp:
+    host: "smtp.gmail.com"
+
+# 安全配置
+security:
+  cors:
+    allow_origins:
+      - "http://localhost:3000"
+      - "http://localhost:3001"
+      - "http://127.0.0.1:3000"
+      - "http://127.0.0.1:3001"
+  rate_limit:
+    enabled: false  # 开发环境关闭限流
+  antivirus:
+    enabled: false  # 开发环境关闭病毒扫描
+
+# 日志配置
+log:
+  level: "debug"
+  format: "text"  # 开发环境使用文本格式便于阅读
+  output: "stdout"
+
+# 监控配置
+monitoring:
+  metrics:
+    enabled: true
+  health:
+    enabled: true
+  pprof:
+    enabled: true  # 开发环境启用性能分析
+
+# WebSocket配置
+websocket:
+  enabled: true
+  check_origin: false  # 开发环境不检查Origin
+
+# 消息队列配置
+queue:
+  redis_stream:
+    enabled: true

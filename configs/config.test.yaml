@@ -1,0 +1,93 @@
+# HXLOS Cloud Storage - 测试环境配置文件
+
+# 应用配置
+app:
+  env: "testing"
+  debug: false
+
+# 服务器配置
+server:
+  host: "127.0.0.1"
+  port: 8081
+  mode: "test"
+
+# 数据库配置
+database:
+  mysql:
+    host: "localhost"
+    port: 3306
+    username: "cloudpan_test"
+    password: "test_password_123"
+    dbname: "cloudpan_test"
+    max_idle_conns: 5
+    max_open_conns: 20
+
+# Redis配置
+redis:
+  host: "localhost"
+  port: 6379
+  password: ""
+  db: 2  # 使用DB2用于测试
+
+# JWT配置
+jwt:
+  secret: "cloudpan-test-jwt-secret-key"
+  expire_hours: 1  # 测试环境短过期时间
+
+# 文件存储配置
+storage:
+  local:
+    root_path: "./storage/test"
+    max_size: 104857600  # 100MB，测试环境限制
+  oss:
+    enabled: false  # 测试环境不启用OSS
+
+# 用户配置
+user:
+  default_quota: 104857600  # 100MB，测试环境限制
+  password:
+    bcrypt_cost: 4  # 最低加密成本，提高测试速度
+
+# 邮件配置
+email:
+  smtp:
+    host: "localhost"
+    port: 1025  # 测试SMTP服务器端口
+    username: "test@example.com"
+    password: "test_password"
+    from_email: "test@example.com"
+
+# 安全配置
+security:
+  cors:
+    allow_origins:
+      - "http://localhost:3000"
+  rate_limit:
+    enabled: false  # 测试环境关闭限流
+  antivirus:
+    enabled: false  # 测试环境关闭病毒扫描
+
+# 日志配置
+log:
+  level: "warn"  # 测试环境减少日志输出
+  format: "json"
+  output: "stdout"
+
+# 缓存配置
+cache:
+  default_ttl: 60s  # 测试环境短TTL
+  user_info_ttl: 30s
+  file_info_ttl: 30s
+
+# 监控配置
+monitoring:
+  metrics:
+    enabled: false  # 测试环境关闭监控
+  health:
+    enabled: true
+  pprof:
+    enabled: false
+
+# WebSocket配置
+websocket:
+  enabled: false  # 测试环境可选择关闭WebSocket

@@ -1,0 +1,122 @@
+# HXLOS Cloud Storage - 生产环境配置文件
+
+# 应用配置
+app:
+  env: "production"
+  debug: false
+
+# 服务器配置
+server:
+  host: "0.0.0.0"
+  port: 8080
+  mode: "release"
+  read_timeout: 30s
+  write_timeout: 30s
+
+# 数据库配置
+database:
+  mysql:
+    host: "${DB_HOST}"
+    port: 3306
+    username: "${DB_USER}"
+    password: "${DB_PASSWORD}"
+    dbname: "${DB_NAME}"
+    max_idle_conns: 20
+    max_open_conns: 200
+    conn_max_lifetime: 7200s
+
+# Redis配置
+redis:
+  host: "${REDIS_HOST}"
+  port: 6379
+  password: "${REDIS_PASSWORD}"
+  db: 0
+  pool_size: 20
+  min_idle_conns: 10
+
+# JWT配置
+jwt:
+  secret: "${JWT_SECRET}"
+  expire_hours: 24
+  refresh_expire_hours: 168
+
+# 文件存储配置
+storage:
+  local:
+    root_path: "/data/storage"
+    max_size: 53687091200  # 50GB
+  oss:
+    enabled: true
+    provider: "${OSS_PROVIDER}"
+    endpoint: "${OSS_ENDPOINT}"
+    access_key_id: "${OSS_ACCESS_KEY_ID}"
+    access_key_secret: "${OSS_ACCESS_KEY_SECRET}"
+    bucket_name: "${OSS_BUCKET}"
+    region: "${OSS_REGION}"
+    domain: "${OSS_DOMAIN}"
+    auto_switch_size: 104857600  # 100MB
+
+# 用户配置
+user:
+  default_quota: 10737418240  # 10GB
+  max_quota: 107374182400     # 100GB
+  password:
+    bcrypt_cost: 12  # 生产环境使用高强度加密
+
+# 邮件配置
+email:
+  smtp:
+    host: "${SMTP_HOST}"
+    port: 587
+    username: "${SMTP_USER}"
+    password: "${SMTP_PASSWORD}"
+    from_email: "${SMTP_FROM_EMAIL}"
+
+# 安全配置
+security:
+  cors:
+    allow_origins:
+      - "${FRONTEND_URL}"
+    allow_credentials: true
+  rate_limit:
+    enabled: true
+    requests_per_minute: 60
+    burst: 100
+  antivirus:
+    enabled: true
+    clamav_socket: "/var/run/clamav/clamd.ctl"
+
+# 日志配置
+log:
+  level: "info"
+  format: "json"
+  output: "file"
+  file_path: "/var/log/cloudpan/app.log"
+  max_size: 100
+  max_age: 30
+  max_backups: 10
+  compress: true
+  access_log:
+    enabled: true
+    file_path: "/var/log/cloudpan/access.log"
+
+# 监控配置
+monitoring:
+  metrics:
+    enabled: true
+  health:
+    enabled: true
+  pprof:
+    enabled: false  # 生产环境关闭pprof
+
+# WebSocket配置
+websocket:
+  enabled: true
+  check_origin: true  # 生产环境检查Origin
+
+# 第三方服务配置
+third_party:
+  sms:
+    enabled: false
+  geo:
+    enabled: false

@@ -1,0 +1,115 @@
+# HXLOS Cloud Storage - 配置文件模板
+# 请复制此文件并根据实际环境修改配置值
+
+# 应用配置
+app:
+  name: "cloudpan"
+  version: "1.0.0"
+  env: "production"  # development, testing, production
+  debug: false
+  
+# 服务器配置
+server:
+  host: "0.0.0.0"
+  port: 8080
+  mode: "release"  # debug, release, test
+  read_timeout: 30s
+  write_timeout: 30s
+  max_header_bytes: 1048576
+
+# 数据库配置 - 请修改为实际数据库信息
+database:
+  mysql:
+    host: "localhost"  # 数据库主机地址
+    port: 3306         # 数据库端口
+    username: "your_db_user"      # 数据库用户名
+    password: "your_db_password"  # 数据库密码
+    dbname: "cloudpan"            # 数据库名称
+    charset: "utf8mb4"
+    parse_time: true
+    loc: "Local"
+    max_idle_conns: 20
+    max_open_conns: 200
+    conn_max_lifetime: 7200s
+    timezone: "Asia/Shanghai"
+    
+# Redis配置 - 请修改为实际Redis信息
+redis:
+  host: "localhost"      # Redis主机地址
+  port: 6379            # Redis端口
+  password: ""          # Redis密码（如果有）
+  db: 0                 # Redis数据库编号
+  protocol: 3
+  pool_size: 20
+  min_idle_conns: 10
+
+# JWT配置 - 请生成强密钥
+jwt:
+  secret: "CHANGE_THIS_TO_RANDOM_SECRET_KEY"  # 请更改为随机密钥
+  expire_hours: 24
+  refresh_expire_hours: 168
+  issuer: "cloudpan"
+  
+# 文件存储配置
+storage:
+  local:
+    enabled: true
+    root_path: "/data/storage"  # 本地存储根目录
+    temp_path: "/data/storage/temp"
+    max_size: 53687091200  # 50GB
+  
+  # OSS配置 - 如果使用云存储请配置
+  oss:
+    enabled: false               # 是否启用OSS
+    provider: "aliyun"          # aliyun, minio, aws
+    endpoint: "your_oss_endpoint"
+    access_key_id: "your_access_key_id"
+    access_key_secret: "your_access_key_secret"
+    bucket_name: "your_bucket_name"
+    region: "your_region"
+    domain: "your_domain"
+    auto_switch_size: 104857600  # 超过100MB自动上传到OSS
+
+# 邮件配置 - 请配置SMTP服务器信息
+email:
+  smtp:
+    host: "smtp.gmail.com"      # SMTP服务器地址
+    port: 587                   # SMTP端口
+    username: "your_email@gmail.com"     # 邮箱用户名
+    password: "your_email_password"      # 邮箱密码或应用密码
+    from_name: "HXLOS Cloud Storage"
+    from_email: "your_email@gmail.com"   # 发件人邮箱
+
+# 安全配置
+security:
+  cors:
+    allow_origins:
+      - "https://your-domain.com"  # 允许的前端域名
+    allow_credentials: true
+  rate_limit:
+    enabled: true
+    requests_per_minute: 60
+  antivirus:
+    enabled: true  # 是否启用病毒扫描
+
+# 日志配置
+log:
+  level: "info"  # debug, info, warn, error
+  format: "json"
+  output: "file"
+  file_path: "/var/log/cloudpan/app.log"
+
+# 监控配置
+monitoring:
+  metrics:
+    enabled: true
+  health:
+    enabled: true
+  pprof:
+    enabled: false  # 生产环境建议关闭
+
+# 注意事项：
+# 1. 请将敏感信息（密码、密钥等）设置为环境变量
+# 2. 生产环境请使用强密码和随机密钥
+# 3. 定期备份配置文件
+# 4. 不要将包含敏感信息的配置文件提交到版本控制系统

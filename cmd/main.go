@@ -4,6 +4,12 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	_ "github.com/go-sql-driver/mysql"
@@ -11,114 +17,143 @@ import (
 	"github.com/redis/go-redis/v9"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
+
+	"cloudpan/internal/pkg/config"
+	"cloudpan/internal/pkg/database"
 )
 
 func main() {
-	fmt.Println("HXLOS Cloud Storage - 项目初始化成功!")
-	fmt.Println("Go模块: cloudpan")
-	fmt.Println("Go版本: 1.23.12")
-	fmt.Println("Gin框架: 已添加")
-	fmt.Println("Gorm ORM: 已添加")
-	fmt.Println("MySQL驱动: 已添加 (支持MySQL 8.0.31)")
-	fmt.Println("Redis客户端: 已添加 (支持Redis 7.0.6)")
-	fmt.Println("JWT认证: 已添加 (支持golang-jwt/jwt/v5)")
+	fmt.Println("HXLOS Cloud Storage - 启动中...")
 
-	// MySQL 8.0.31 直接连接示例（注释掉实际连接）
-	// MySQL 8.0.31 连接字符串示例：
-	// dsn := "username:password@tcp(localhost:3306)/database_name?charset=utf8mb4&parseTime=True&loc=Local&allowNativePasswords=true"
-	// db, err := sql.Open("mysql", dsn)
-	// if err != nil {
-	//     fmt.Println("MySQL 8.0.31 直接连接失败:", err)
-	// } else {
-	//     defer db.Close()
-	//     fmt.Println("MySQL 8.0.31 直接连接成功")
-	// }
+	// 1. 加载配置文件
+	log.Println("Loading configuration...")
+	if err := config.Load(); err != nil {
+		log.Fatalf("Failed to load configuration: %v", err)
+	}
+	log.Println("Configuration loaded successfully")
 
-	// Gorm + MySQL 8.0.31 连接示例（注释掉实际连接）
-	// gormDsn := "username:password@tcp(localhost:3306)/database_name?charset=utf8mb4&parseTime=True&loc=Local"
-	// gormDB, err := gorm.Open(mysql.Open(gormDsn), &gorm.Config{})
-	// if err != nil {
-	//     fmt.Println("Gorm MySQL 8.0.31 连接失败:", err)
-	// } else {
-	//     fmt.Println("Gorm MySQL 8.0.31 连接成功")
-	// }
+	// 2. 初始化数据库连接池
+	log.Println("Initializing database connections...")
+	if err := database.Init(); err != nil {
+		log.Fatalf("Failed to initialize database: %v", err)
+	}
+	log.Println("Database connections initialized successfully")
 
-	// Redis 7.0.6 客户端连接示例（注释掉实际连接）
-	// Redis 7.0.6 连接配置：
-	// rdb := redis.NewClient(&redis.Options{
-	//     Addr:     "localhost:6379",
-	//     Password: "", // 无密码
-	//     DB:       0,  // 默认数据库
-	//     Protocol: 3,  // Redis 7.0.6 支持RESP3协议
-	// })
-	// ctx := context.Background()
-	// pong, err := rdb.Ping(ctx).Result()
-	// if err != nil {
-	//     fmt.Println("Redis 7.0.6 连接失败:", err)
-	// } else {
-	//     fmt.Println("Redis 7.0.6 连接成功:", pong)
-	// }
+	// 3. 设置Gin模式
+	if !config.AppConfig.App.Debug {
+		gin.SetMode(gin.ReleaseMode)
+	}
 
-	// Redis Stream 消息队列示例（支持Redis 7.0.6新特性）
-	// streamName := "cloudpan:events"
-	// 添加消息到Stream
-	// xaddResult := rdb.XAdd(ctx, &redis.XAddArgs{
-	//     Stream: streamName,
-	//     Values: map[string]interface{}{
-	//         "event": "file_upload",
-	//         "user_id": "123",
-	//         "timestamp": time.Now().Unix(),
-	//     },
-	// })
-	// fmt.Println("Redis Stream 消息添加:", xaddResult.Val())
-
-	// JWT认证示例（golang-jwt/jwt/v5）
-	// JWT秘钥和配置：
-	// jwtSecret := []byte("cloudpan-jwt-secret-key")
-	// 生成JWT Token
-	// token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-	//     "user_id": "123",
-	//     "username": "admin",
-	//     "exp": time.Now().Add(time.Hour * 24).Unix(), // 24小时过期
-	//     "iat": time.Now().Unix(),
-	// })
-	// tokenString, err := token.SignedString(jwtSecret)
-	// if err != nil {
-	//     fmt.Println("JWT Token生成失败:", err)
-	// } else {
-	//     fmt.Println("JWT Token生成成功:", tokenString[:50]+"...")
-	// }
-	// 解析JWT Token
-	// claims := jwt.MapClaims{}
-	// parsedToken, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
-	//     return jwtSecret, nil
-	// })
-	// if err != nil {
-	//     fmt.Println("JWT Token解析失败:", err)
-	// } else if parsedToken.Valid {
-	//     fmt.Println("JWT Token解析成功:", claims["username"])
-	// }
-
-	// 引用确保依赖被保留
-	_ = sql.Drivers            // 引用sql标准库
-	_ = mysql.Open             // 引用mysql驱动确保依赖被保留
-	_ = gorm.Config{}          // 引用gorm确保依赖被保留
-	_ = &redis.Options{}       // 引用redis客户端确保依赖被保留
-	_ = jwt.SigningMethodHS256 // 引用JWT确保依赖被保留
-	_ = context.TODO           // 引用context包
-
-	// 创建Gin引擎
+	// 4. 创建Gin引擎
 	r := gin.Default()
 
-	// 添加健康检查接口
-	r.GET("/health", func(c *gin.Context) {
-		c.JSON(200, gin.H{
-			"status":  "ok",
-			"message": "HXLOS Cloud Storage Service is running",
-			"module":  "cloudpan",
-		})
-	})
+	// 5. 添加健康检查接口
+	r.GET("/health", healthCheckHandler)
+	r.GET("/health/database", databaseHealthHandler)
+	r.GET("/api/v1/system/stats", systemStatsHandler)
 
-	fmt.Println("服务启动在 :8080 端口")
-	r.Run(":8080")
+	// 6. 创建HTTP服务器
+	srv := &http.Server{
+		Addr:           fmt.Sprintf("%s:%d", config.AppConfig.Server.Host, config.AppConfig.Server.Port),
+		Handler:        r,
+		ReadTimeout:    config.AppConfig.Server.ReadTimeout,
+		WriteTimeout:   config.AppConfig.Server.WriteTimeout,
+		MaxHeaderBytes: config.AppConfig.Server.MaxHeaderBytes,
+	}
+
+	// 7. 启动服务器（在goroutine中）
+	go func() {
+		log.Printf("Starting server on %s", srv.Addr)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("Failed to start server: %v", err)
+		}
+	}()
+
+	log.Printf("HXLOS Cloud Storage started successfully on %s", srv.Addr)
+	log.Printf("Environment: %s, Debug: %v", config.AppConfig.App.Env, config.AppConfig.App.Debug)
+
+	// 8. 等待中断信号以优雅关闭服务器
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+	log.Println("Shutting down server...")
+
+	// 9. 优雅关闭服务器，等待现有连接完成
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	if err := srv.Shutdown(ctx); err != nil {
+		log.Printf("Server forced to shutdown: %v", err)
+	}
+
+	// 10. 关闭数据库连接
+	if err := database.Shutdown(); err != nil {
+		log.Printf("Failed to shutdown database: %v", err)
+	}
+
+	log.Println("Server exited")
+
+	// 确保依赖被保留（防止go mod tidy移除）
+	_ = sql.Drivers
+	_ = mysql.Open
+	_ = gorm.Config{}
+	_ = &redis.Options{}
+	_ = jwt.SigningMethodHS256
+	_ = context.TODO
+}
+
+// healthCheckHandler 基础健康检查处理器
+func healthCheckHandler(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{
+		"status":    "ok",
+		"message":   "HXLOS Cloud Storage Service is running",
+		"module":    "cloudpan",
+		"version":   config.AppConfig.App.Version,
+		"timestamp": time.Now().Unix(),
+	})
+}
+
+// databaseHealthHandler 数据库健康检查处理器
+func databaseHealthHandler(c *gin.Context) {
+	status := database.Status()
+	statusCode := http.StatusOK
+
+	// 检查是否有不健康的数据库连接
+	for _, dbStatus := range status {
+		if dbInfo, ok := dbStatus.(map[string]interface{}); ok {
+			if dbInfo["status"] != "healthy" {
+				statusCode = http.StatusServiceUnavailable
+				break
+			}
+		}
+	}
+
+	c.JSON(statusCode, gin.H{
+		"status":    "ok",
+		"databases": status,
+		"timestamp": time.Now().Unix(),
+	})
+}
+
+// systemStatsHandler 系统统计信息处理器
+func systemStatsHandler(c *gin.Context) {
+	stats := gin.H{
+		"application": gin.H{
+			"name":    config.AppConfig.App.Name,
+			"version": config.AppConfig.App.Version,
+			"env":     config.AppConfig.App.Env,
+			"debug":   config.AppConfig.App.Debug,
+		},
+		"server": gin.H{
+			"host":             config.AppConfig.Server.Host,
+			"port":             config.AppConfig.Server.Port,
+			"read_timeout":     config.AppConfig.Server.ReadTimeout.String(),
+			"write_timeout":    config.AppConfig.Server.WriteTimeout.String(),
+			"max_header_bytes": config.AppConfig.Server.MaxHeaderBytes,
+		},
+		"database":  database.Status(),
+		"timestamp": time.Now().Unix(),
+	}
+
+	c.JSON(http.StatusOK, stats)
 }

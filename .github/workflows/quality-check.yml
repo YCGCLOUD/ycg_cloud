@@ -111,7 +111,7 @@ jobs:
         
     - name: 安装Gosec
       run: |
-        go install github.com/securecodewarrior/gosec/v2@latest
+        go install github.com/securego/gosec/v2/cmd/gosec@latest
         
     - name: 运行Gosec安全扫描
       run: |

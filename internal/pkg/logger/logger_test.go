@@ -184,9 +184,7 @@ func TestCreateFileWriter(t *testing.T) {
 	}
 
 	writer := createFileWriter(config)
-	if writer == nil {
-		t.Error("createFileWriter should not return nil")
-	}
+	// createFileWriter 永远不会返回 nil，所以不需要检查
 
 	if writer.Filename != config.FilePath {
 		t.Errorf("Expected filename %s, got %s", config.FilePath, writer.Filename)

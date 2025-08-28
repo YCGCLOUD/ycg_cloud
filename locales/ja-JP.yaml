@@ -1,0 +1,42 @@
+# Japanese translation file
+common:
+  success: "成功"
+  error: "エラー"
+  not_found: "見つかりません"
+  invalid_params: "無効なパラメータ"
+  unauthorized: "未認証"
+  forbidden: "アクセス禁止"
+  internal_error: "内部サーバーエラー"
+  too_many_requests: "リクエストが多すぎます"
+  service_unavailable: "サービス利用不可"
+
+api:
+  version_not_supported: "サポートされていないAPIバージョン"
+  version_deprecated: "廃止されたAPIバージョン"
+  
+auth:
+  login_success: "ログイン成功"
+  login_failed: "ログイン失敗"
+  token_invalid: "無効なトークン"
+  token_expired: "トークンが期限切れ"
+  
+user:
+  not_found: "ユーザーが見つかりません"
+  created: "ユーザーが正常に作成されました"
+  updated: "ユーザーが正常に更新されました"
+  deleted: "ユーザーが正常に削除されました"
+  
+file:
+  upload_success: "ファイルが正常にアップロードされました"
+  upload_failed: "ファイルアップロードに失敗しました"
+  download_success: "ファイルが正常にダウンロードされました"
+  not_found: "ファイルが見つかりません"
+  too_large: "ファイルが大きすぎます"
+  invalid_type: "サポートされていないファイル形式"
+  
+validation:
+  required: "%s は必須項目です"
+  min_length: "%s の最小長は %d です"
+  max_length: "%s の最大長は %d です"
+  email_format: "メールアドレスの形式が正しくありません"
+  phone_format: "電話番号の形式が正しくありません"

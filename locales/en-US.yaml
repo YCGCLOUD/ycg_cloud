@@ -1,0 +1,42 @@
+# English translation file
+common:
+  success: "Success"
+  error: "Error"
+  not_found: "Not Found"
+  invalid_params: "Invalid Parameters"
+  unauthorized: "Unauthorized"
+  forbidden: "Forbidden"
+  internal_error: "Internal Server Error"
+  too_many_requests: "Too Many Requests"
+  service_unavailable: "Service Unavailable"
+
+api:
+  version_not_supported: "API version not supported"
+  version_deprecated: "API version deprecated"
+  
+auth:
+  login_success: "Login successful"
+  login_failed: "Login failed"
+  token_invalid: "Invalid token"
+  token_expired: "Token expired"
+  
+user:
+  not_found: "User not found"
+  created: "User created successfully"
+  updated: "User updated successfully"
+  deleted: "User deleted successfully"
+  
+file:
+  upload_success: "File uploaded successfully"
+  upload_failed: "File upload failed"
+  download_success: "File downloaded successfully"
+  not_found: "File not found"
+  too_large: "File too large"
+  invalid_type: "File type not supported"
+  
+validation:
+  required: "%s is required"
+  min_length: "%s minimum length is %d"
+  max_length: "%s maximum length is %d"
+  email_format: "Invalid email format"
+  phone_format: "Invalid phone format"

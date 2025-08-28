@@ -1,0 +1,42 @@
+# 中文翻译文件
+common:
+  success: "操作成功"
+  error: "操作失败"
+  not_found: "未找到"
+  invalid_params: "参数无效"
+  unauthorized: "未授权"
+  forbidden: "禁止访问"
+  internal_error: "内部服务器错误"
+  too_many_requests: "请求过于频繁"
+  service_unavailable: "服务不可用"
+
+api:
+  version_not_supported: "不支持的API版本"
+  version_deprecated: "API版本已弃用"
+  
+auth:
+  login_success: "登录成功"
+  login_failed: "登录失败"
+  token_invalid: "令牌无效"
+  token_expired: "令牌已过期"
+  
+user:
+  not_found: "用户不存在"
+  created: "用户创建成功"
+  updated: "用户更新成功"
+  deleted: "用户删除成功"
+  
+file:
+  upload_success: "文件上传成功"
+  upload_failed: "文件上传失败"
+  download_success: "文件下载成功"
+  not_found: "文件不存在"
+  too_large: "文件过大"
+  invalid_type: "文件类型不支持"
+  
+validation:
+  required: "%s 是必填项"
+  min_length: "%s 最小长度为 %d"
+  max_length: "%s 最大长度为 %d"
+  email_format: "邮箱格式不正确"
+  phone_format: "手机号格式不正确"

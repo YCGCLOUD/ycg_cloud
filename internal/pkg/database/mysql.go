@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"net/url"
 	"time"
 
 	"gorm.io/driver/mysql"
@@ -65,6 +66,11 @@ func InitMySQL() error {
 	// 设置全局DB实例
 	DB = db
 
+	// 设置数据库时区（在连接成功后）
+	if err := setTimeZone(db, cfg.Timezone); err != nil {
+		log.Printf("Warning: failed to set timezone: %v", err)
+	}
+
 	// 安装默认插件
 	if err := InstallPlugins(db, GetDefaultPlugins()...); err != nil {
 		log.Printf("Warning: failed to install some plugins: %v", err)
@@ -86,22 +92,21 @@ func InitMySQL() error {
 
 // buildDSN 构建MySQL连接字符串
 func buildDSN(cfg config.MySQLConfig) string {
+	// 对密码和其他参数进行URL编码以防止特殊字符问题
+	password := url.QueryEscape(cfg.Password)
+	loc := url.QueryEscape(cfg.Loc)
+
 	// MySQL 8.0.31兼容配置
 	dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?charset=%s&parseTime=%t&loc=%s&allowNativePasswords=true",
 		cfg.Username,
-		cfg.Password,
+		password,
 		cfg.Host,
 		cfg.Port,
 		cfg.DBName,
 		cfg.Charset,
 		cfg.ParseTime,
-		cfg.Loc,
+		loc,
 	)
-
-	// 添加时区配置（如果设置了）
-	if cfg.Timezone != "" {
-		dsn += "&time_zone=" + cfg.Timezone
-	}
 
 	return dsn
 }
@@ -158,6 +163,35 @@ func testConnection(sqlDB sqlDB) error {
 		return fmt.Errorf("ping database failed: %w", err)
 	}
 
+	return nil
+}
+
+// setTimeZone 设置数据库时区
+func setTimeZone(db *gorm.DB, timezone string) error {
+	if timezone == "" {
+		return nil
+	}
+
+	// 获取底层sql.DB实例
+	sqlDB, err := db.DB()
+	if err != nil {
+		return fmt.Errorf("failed to get underlying sql.DB: %w", err)
+	}
+
+	// 设置时区
+	_, err = sqlDB.Exec("SET time_zone = ?", timezone)
+	if err != nil {
+		return fmt.Errorf("failed to set timezone to %s: %w", timezone, err)
+	}
+
+	// 验证时区设置
+	var currentTimezone string
+	err = sqlDB.QueryRow("SELECT @@time_zone").Scan(&currentTimezone)
+	if err != nil {
+		return fmt.Errorf("failed to verify timezone setting: %w", err)
+	}
+
+	log.Printf("Database timezone set to: %s", currentTimezone)
 	return nil
 }
 

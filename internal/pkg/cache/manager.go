@@ -318,7 +318,14 @@ type BatchOperator struct {
 
 // Set 批量设置
 func (b *BatchOperator) Set(key string, value interface{}, ttl time.Duration) *BatchOperator {
-	data, _ := json.Marshal(value)
+	// 使用与CacheManager一致的序列化方法
+	cm := &CacheManager{}
+	data, err := cm.serialize(value)
+	if err != nil {
+		// 如果序列化失败，回退到JSON
+		jsonData, _ := json.Marshal(value)
+		data = string(jsonData)
+	}
 	b.pipe.Set(b.ctx, key, data, ttl)
 	return b
 }

@@ -81,7 +81,7 @@ func TestBuildDSN(t *testing.T) {
 				Loc:       "UTC",
 				Timezone:  "+08:00",
 			},
-			expected: "user:pass@tcp(127.0.0.1:3306)/mydb?charset=utf8mb4&parseTime=true&loc=UTC&allowNativePasswords=true&time_zone=+08:00",
+			expected: "user:pass@tcp(127.0.0.1:3306)/mydb?charset=utf8mb4&parseTime=true&loc=UTC&allowNativePasswords=true",
 		},
 	}
 

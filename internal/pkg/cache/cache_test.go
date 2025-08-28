@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"cloudpan/internal/pkg/config"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 )
@@ -20,22 +21,37 @@ type CacheTestSuite struct {
 
 // SetupSuite 测试套件初始化
 func (s *CacheTestSuite) SetupSuite() {
-	// 初始化测试配置
-	config.AppConfig = &config.Config{
-		Redis: config.RedisConfig{
-			Host:         "localhost",
-			Port:         6379,
-			Password:     "",
-			DB:           1, // 使用测试数据库
-			PoolSize:     5,
-			MinIdleConns: 2,
-		},
-		Cache: config.CacheConfig{
-			DefaultTTL:          time.Hour,
-			UserInfoTTL:         30 * time.Minute,
-			FileInfoTTL:         10 * time.Minute,
-			VerificationCodeTTL: 5 * time.Minute,
-		},
+	// 尝试加载配置，如果失败则使用测试配置
+	if err := config.Load(); err != nil {
+		// 配置加载失败，使用测试环境的Redis配置
+		config.AppConfig = &config.Config{
+			Redis: config.RedisConfig{
+				Host:         "dbconn.sealosbja.site",
+				Port:         38650,
+				Password:     "dttd62tf",
+				DB:           1,
+				PoolSize:     5,
+				MinIdleConns: 2,
+				MaxRetries:   3,
+				DialTimeout:  5 * time.Second,
+				ReadTimeout:  3 * time.Second,
+				WriteTimeout: 3 * time.Second,
+				PoolTimeout:  4 * time.Second,
+				IdleTimeout:  300 * time.Second,
+			},
+			Cache: config.CacheConfig{
+				DefaultTTL:          time.Hour,
+				UserInfoTTL:         30 * time.Minute,
+				FileInfoTTL:         10 * time.Minute,
+				VerificationCodeTTL: 5 * time.Minute,
+			},
+		}
+	}
+
+	// 验证Redis配置是否存在
+	if config.AppConfig.Redis.Host == "" {
+		s.T().Skip("Redis配置为空，跳过缓存测试")
+		return
 	}
 }
 

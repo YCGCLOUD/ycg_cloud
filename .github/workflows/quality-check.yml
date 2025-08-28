@@ -32,9 +32,19 @@ jobs:
         path: |
           ~/.cache/go-build
           ~/go/pkg/mod
-        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}-${{ github.run_id }}
         restore-keys: |
+          ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}-
           ${{ runner.os }}-go-
+          
+    - name: 清理可能的缓存冲突
+      run: |
+        # 清理可能存在的部分缓存文件
+        if [ -d ~/go/pkg/mod ]; then
+          find ~/go/pkg/mod -name "*.partial" -delete 2>/dev/null || true
+          find ~/go/pkg/mod -name "*.tmp" -delete 2>/dev/null || true
+        fi
+        echo "缓存清理完成"
           
     - name: 下载依赖
       run: go mod download
@@ -166,6 +176,17 @@ jobs:
       uses: actions/setup-go@v4
       with:
         go-version: '1.23.12'
+        
+    - name: 缓存Go模块
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cache/go-build
+          ~/go/pkg/mod
+        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}-${{ github.run_id }}
+        restore-keys: |
+          ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}-
+          ${{ runner.os }}-go-
         
     - name: 安装Gosec
       run: |

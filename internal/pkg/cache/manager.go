@@ -192,43 +192,103 @@ func (c *CacheManager) Batch() *BatchOperator {
 
 // serialize 序列化数据（优化内存分配）
 func (c *CacheManager) serialize(value interface{}) (string, error) {
+	// 尝试基础类型序列化
+	if result, ok := c.serializeBasicTypes(value); ok {
+		return result, nil
+	}
+
+	// 尝试数值类型序列化
+	if result, ok := c.serializeNumericTypes(value); ok {
+		return result, nil
+	}
+
+	// 默认使用JSON序列化
+	data, err := json.Marshal(value)
+	return string(data), err
+}
+
+// serializeBasicTypes 序列化基础类型
+func (c *CacheManager) serializeBasicTypes(value interface{}) (string, bool) {
 	switch v := value.(type) {
 	case string:
-		return v, nil
+		return v, true
 	case []byte:
-		return string(v), nil
-	case int:
-		return strconv.Itoa(v), nil
-	case int8:
-		return strconv.FormatInt(int64(v), 10), nil
-	case int16:
-		return strconv.FormatInt(int64(v), 10), nil
-	case int32:
-		return strconv.FormatInt(int64(v), 10), nil
-	case int64:
-		return strconv.FormatInt(v, 10), nil
-	case uint:
-		return strconv.FormatUint(uint64(v), 10), nil
-	case uint8:
-		return strconv.FormatUint(uint64(v), 10), nil
-	case uint16:
-		return strconv.FormatUint(uint64(v), 10), nil
-	case uint32:
-		return strconv.FormatUint(uint64(v), 10), nil
-	case uint64:
-		return strconv.FormatUint(v, 10), nil
-	case float32:
-		return strconv.FormatFloat(float64(v), 'f', -1, 32), nil
-	case float64:
-		return strconv.FormatFloat(v, 'f', -1, 64), nil
+		return string(v), true
 	case bool:
 		if v {
-			return "1", nil
+			return "1", true
 		}
-		return "0", nil
+		return "0", true
 	default:
-		data, err := json.Marshal(value)
-		return string(data), err
+		return "", false
+	}
+}
+
+// serializeNumericTypes 序列化数值类型
+func (c *CacheManager) serializeNumericTypes(value interface{}) (string, bool) {
+	// 尝试有符号整数类型
+	if result, ok := c.serializeSignedInts(value); ok {
+		return result, true
+	}
+
+	// 尝试无符号整数类型
+	if result, ok := c.serializeUnsignedInts(value); ok {
+		return result, true
+	}
+
+	// 尝试浮点数类型
+	if result, ok := c.serializeFloats(value); ok {
+		return result, true
+	}
+
+	return "", false
+}
+
+// serializeSignedInts 序列化有符号整数类型
+func (c *CacheManager) serializeSignedInts(value interface{}) (string, bool) {
+	switch v := value.(type) {
+	case int:
+		return strconv.Itoa(v), true
+	case int8:
+		return strconv.FormatInt(int64(v), 10), true
+	case int16:
+		return strconv.FormatInt(int64(v), 10), true
+	case int32:
+		return strconv.FormatInt(int64(v), 10), true
+	case int64:
+		return strconv.FormatInt(v, 10), true
+	default:
+		return "", false
+	}
+}
+
+// serializeUnsignedInts 序列化无符号整数类型
+func (c *CacheManager) serializeUnsignedInts(value interface{}) (string, bool) {
+	switch v := value.(type) {
+	case uint:
+		return strconv.FormatUint(uint64(v), 10), true
+	case uint8:
+		return strconv.FormatUint(uint64(v), 10), true
+	case uint16:
+		return strconv.FormatUint(uint64(v), 10), true
+	case uint32:
+		return strconv.FormatUint(uint64(v), 10), true
+	case uint64:
+		return strconv.FormatUint(v, 10), true
+	default:
+		return "", false
+	}
+}
+
+// serializeFloats 序列化浮点数类型
+func (c *CacheManager) serializeFloats(value interface{}) (string, bool) {
+	switch v := value.(type) {
+	case float32:
+		return strconv.FormatFloat(float64(v), 'f', -1, 32), true
+	case float64:
+		return strconv.FormatFloat(v, 'f', -1, 64), true
+	default:
+		return "", false
 	}
 }
 

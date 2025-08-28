@@ -140,12 +140,20 @@ func isOriginAllowed(origin string, allowedOrigins []string) bool {
 		// 支持子域名匹配，例如 *.example.com
 		if strings.HasPrefix(allowed, "*.") {
 			domain := allowed[2:]
+			// 从origin中提取域名部分（去掉协议）
+			originWithoutProtocol := origin
+			if strings.Contains(origin, "://") {
+				parts := strings.SplitN(origin, "://", 2)
+				if len(parts) == 2 {
+					originWithoutProtocol = parts[1]
+				}
+			}
 			// 检查是否为子域名（以 .domain 结尾）
-			if strings.HasSuffix(origin, "."+domain) {
+			if strings.HasSuffix(originWithoutProtocol, "."+domain) {
 				return true
 			}
 			// 检查是否为精确的域名匹配
-			if strings.HasSuffix(origin, "://"+domain) {
+			if originWithoutProtocol == domain {
 				return true
 			}
 		}

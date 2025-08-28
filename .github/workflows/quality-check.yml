@@ -92,9 +92,44 @@ jobs:
         coverage=$(go tool cover -func=coverage.out | grep "total:" | awk '{print $3}' | sed 's/%//')
         echo "当前测试覆盖率: ${coverage}%"
         
-        # 暂时跳过覆盖率检查，专注于功能开发
-        echo "ℹ️ 暂时跳过覆盖率检查，专注于功能开发"
-        echo "✅ 测试覆盖率检查完成"
+        # 根据项目规范检查各包覆盖率
+        echo "检查各包覆盖率:"
+        
+        # Cache包覆盖率检查 (≥79%为良好)
+        cache_coverage=$(go test -cover ./internal/pkg/cache | grep "coverage:" | awk '{print $4}' | sed 's/%//')
+        echo "Cache包覆盖率: ${cache_coverage}%"
+        if (( $(echo "$cache_coverage < 79" | bc -l) )); then
+          echo "❌ Cache包覆盖率 ${cache_coverage}% 低于标准 79%"
+          exit 1
+        fi
+        
+        # Middleware包覆盖率检查 (≥81%为良好)
+        middleware_coverage=$(go test -cover ./internal/api/middleware | grep "coverage:" | awk '{print $4}' | sed 's/%//')
+        echo "Middleware包覆盖率: ${middleware_coverage}%"
+        if (( $(echo "$middleware_coverage < 81" | bc -l) )); then
+          echo "❌ Middleware包覆盖率 ${middleware_coverage}% 低于标准 81%"
+          exit 1
+        fi
+        
+        # Utils包覆盖率检查 (≥90%为优秀)
+        utils_coverage=$(go test -cover ./internal/pkg/utils | grep "coverage:" | awk '{print $4}' | sed 's/%//')
+        echo "Utils包覆盖率: ${utils_coverage}%"
+        if (( $(echo "$utils_coverage < 90" | bc -l) )); then
+          echo "❌ Utils包覆盖率 ${utils_coverage}% 低于标准 90%"
+          exit 1
+        fi
+        
+        # 总体覆盖率检查 (≥80%)
+        if (( $(echo "$coverage < 80" | bc -l) )); then
+          echo "❌ 总体测试覆盖率 ${coverage}% 低于最低要求 80%"
+          exit 1
+        fi
+        
+        echo "✅ 测试覆盖率检查通过"
+        echo "  • Cache包: ${cache_coverage}% (≥79%)"
+        echo "  • Middleware包: ${middleware_coverage}% (≥81%)"
+        echo "  • Utils包: ${utils_coverage}% (≥90%)"
+        echo "  • 总体覆盖率: ${coverage}% (≥80%)"
         
     - name: 上传覆盖率报告
       uses: actions/upload-artifact@v4

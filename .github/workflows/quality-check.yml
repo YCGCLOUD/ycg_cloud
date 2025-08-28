@@ -1,5 +1,11 @@
 name: Code Quality Check
 
+# 添加必要的权限配置以支持CodeQL集成
+permissions:
+  security-events: write  # 允许上传安全扫描结果
+  actions: read          # 允许读取Actions状态
+  contents: read         # 允许读取代码内容
+
 on:
   push:
     branches: [ main, master, develop ]

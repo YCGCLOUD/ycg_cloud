@@ -198,7 +198,8 @@ func setTimeZone(db *gorm.DB, timezone string) error {
 // GetDB 获取数据库连接实例
 func GetDB() *gorm.DB {
 	if DB == nil {
-		log.Fatal("Database not initialized. Call InitMySQL() first")
+		log.Println("数据库未初始化。首先调用 InitMySQL()")
+		return nil
 	}
 	return DB
 }

@@ -36,15 +36,15 @@ sec:
 # Unit testing
 test:
 	@echo "=== Running unit tests ==="
-	go test -v ./internal/...
+	CGO_ENABLED=1 go test -v ./internal/...
 	@echo "=== Running integration tests ==="
-	go test -v ./test/...
+	CGO_ENABLED=1 go test -v ./test/...
 	@echo "Unit testing completed"
 
 # Test coverage
 coverage:
 	@echo "=== Generating test coverage report ==="
-	go test -coverprofile=coverage.out ./internal/... ./test/...
+	CGO_ENABLED=1 go test -coverprofile=coverage.out ./internal/... ./test/...
 	go tool cover -html=coverage.out -o coverage.html
 	@echo "Coverage report generated: coverage.html"
 
@@ -62,7 +62,7 @@ quality-check: fmt lint vet cyclo sec test
 	@echo "5. Security vulnerability scan..."
 	@gosec ./... || echo "⚠️ Security issues found, please review"
 	@echo "6. Unit test execution..."
-	@go test ./internal/... ./test/...
+	CGO_ENABLED=1 go test ./internal/... ./test/...
 	@echo "=== Quality check completed ==="
 
 # Clean generated files
@@ -87,7 +87,7 @@ dev-check: fmt vet cyclo sec test
 prod-check: quality-check coverage
 	@echo "=== Production environment strict quality check ==="
 	@echo "Checking if coverage meets 80% standard..."
-	@go test -coverprofile=coverage.out ./internal/... ./test/... && \
+	CGO_ENABLED=1 go test -coverprofile=coverage.out ./internal/... ./test/... && \
 	go tool cover -func=coverage.out | grep "total:" | awk '{print $$3}' | \
 	sed 's/%//' | awk '{if($$1>=80) print "✅ Coverage passed: "$$1"%"; else {print "❌ Coverage failed: "$$1"% (required ≥80%)"; exit 1}}'
 	@echo "=== Production environment quality check completed ==="

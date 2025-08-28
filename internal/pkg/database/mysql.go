@@ -24,16 +24,36 @@ var (
 func InitMySQL() error {
 	cfg := config.AppConfig.Database.MySQL
 
+	// 创建数据库连接
+	db, err := createDatabaseConnection(cfg)
+	if err != nil {
+		return fmt.Errorf("failed to create database connection: %w", err)
+	}
+
+	// 配置连接池
+	if err := setupConnectionPool(db, cfg); err != nil {
+		return fmt.Errorf("failed to setup connection pool: %w", err)
+	}
+
+	// 进行后初始化设置
+	if err := performPostInitialization(db, cfg); err != nil {
+		return fmt.Errorf("failed to perform post initialization: %w", err)
+	}
+
+	log.Printf("MySQL connected successfully: %s:%d/%s", cfg.Host, cfg.Port, cfg.DBName)
+	log.Printf("Connection pool configured - MaxOpen: %d, MaxIdle: %d, MaxLifetime: %v",
+		cfg.MaxOpenConns, cfg.MaxIdleConns, cfg.ConnMaxLifetime)
+
+	return nil
+}
+
+// createDatabaseConnection 创建数据库连接
+func createDatabaseConnection(cfg config.MySQLConfig) (*gorm.DB, error) {
 	// 构建DSN
 	dsn := buildDSN(cfg)
 
 	// 配置GORM日志
-	var gormLogger logger.Interface
-	if config.AppConfig.App.Debug {
-		gormLogger = NewCustomLogger(200*time.Millisecond, logger.Info)
-	} else {
-		gormLogger = NewCustomLogger(500*time.Millisecond, logger.Warn)
-	}
+	gormLogger := createGormLogger()
 
 	// 连接数据库
 	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{
@@ -44,9 +64,22 @@ func InitMySQL() error {
 	})
 
 	if err != nil {
-		return fmt.Errorf("failed to connect to MySQL: %w", err)
+		return nil, fmt.Errorf("failed to connect to MySQL: %w", err)
 	}
 
+	return db, nil
+}
+
+// createGormLogger 创建GORM日志器
+func createGormLogger() logger.Interface {
+	if config.AppConfig.App.Debug {
+		return NewCustomLogger(200*time.Millisecond, logger.Info)
+	}
+	return NewCustomLogger(500*time.Millisecond, logger.Warn)
+}
+
+// setupConnectionPool 设置连接池
+func setupConnectionPool(db *gorm.DB, cfg config.MySQLConfig) error {
 	// 获取底层sql.DB实例
 	sqlDB, err := db.DB()
 	if err != nil {
@@ -65,7 +98,11 @@ func InitMySQL() error {
 
 	// 设置全局DB实例
 	DB = db
+	return nil
+}
 
+// performPostInitialization 执行后初始化设置
+func performPostInitialization(db *gorm.DB, cfg config.MySQLConfig) error {
 	// 设置数据库时区（在连接成功后）
 	if err := setTimeZone(db, cfg.Timezone); err != nil {
 		log.Printf("Warning: failed to set timezone: %v", err)
@@ -82,10 +119,6 @@ func InitMySQL() error {
 			log.Printf("Warning: auto migration failed: %v", err)
 		}
 	}
-
-	log.Printf("MySQL connected successfully: %s:%d/%s", cfg.Host, cfg.Port, cfg.DBName)
-	log.Printf("Connection pool configured - MaxOpen: %d, MaxIdle: %d, MaxLifetime: %v",
-		cfg.MaxOpenConns, cfg.MaxIdleConns, cfg.ConnMaxLifetime)
 
 	return nil
 }

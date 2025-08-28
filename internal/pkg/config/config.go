@@ -16,40 +16,55 @@ var (
 
 // Load 加载配置文件
 func Load() error {
-	// 获取环境变量，默认为development
-	env := os.Getenv("GO_ENV")
-	if env == "" {
-		env = "development"
+	// 设置基础配置
+	if err := setupViperConfig(); err != nil {
+		return fmt.Errorf("failed to setup viper config: %w", err)
 	}
 
-	// 映射环境名称到配置文件名
-	envFileMap := map[string]string{
-		"development": "dev",
-		"testing":     "test",
-		"production":  "prod",
+	// 加载配置文件
+	if err := loadConfigFiles(); err != nil {
+		return fmt.Errorf("failed to load config files: %w", err)
 	}
 
+	// 处理环境变量
+	if err := setupEnvironmentVars(); err != nil {
+		return fmt.Errorf("failed to setup environment variables: %w", err)
+	}
+
+	// 解析和验证配置
+	return parseAndValidateConfig()
+}
+
+// setupViperConfig 设置Viper基础配置
+func setupViperConfig() error {
 	// 设置配置文件搜索路径
 	viper.AddConfigPath("./configs")
 	viper.AddConfigPath("../configs")
 	viper.AddConfigPath("../../configs")
 	viper.AddConfigPath("/etc/cloudpan")
 
-	// 设置配置文件名称和类型
+	// 设置配置文件类型
 	viper.SetConfigType("yaml")
+	return nil
+}
 
+// loadConfigFiles 加载配置文件
+func loadConfigFiles() error {
 	// 首先加载默认配置
 	viper.SetConfigName("config")
 	if err := viper.ReadInConfig(); err != nil {
 		return fmt.Errorf("failed to read default config file: %w", err)
 	}
 
-	// 如果存在环境特定配置文件，则合并配置
-	envConfigSuffix := envFileMap[env]
-	if envConfigSuffix == "" {
-		envConfigSuffix = env // 如果没有映射，直接使用原环境名
-	}
-	envConfigName := fmt.Sprintf("config.%s", envConfigSuffix)
+	// 加载环境特定配置
+	return loadEnvironmentConfig()
+}
+
+// loadEnvironmentConfig 加载环境特定配置
+func loadEnvironmentConfig() error {
+	env := getEnvironment()
+	envConfigName := getEnvConfigName(env)
+
 	viper.SetConfigName(envConfigName)
 
 	// 尝试读取环境特定配置（不是必须的）
@@ -60,7 +75,38 @@ func Load() error {
 		}
 	}
 
+	return nil
+}
+
+// getEnvironment 获取当前环境
+func getEnvironment() string {
+	env := os.Getenv("GO_ENV")
+	if env == "" {
+		env = "development"
+	}
+	return env
+}
+
+// getEnvConfigName 获取环境配置文件名
+func getEnvConfigName(env string) string {
+	// 映射环境名称到配置文件名
+	envFileMap := map[string]string{
+		"development": "dev",
+		"testing":     "test",
+		"production":  "prod",
+	}
+
+	envConfigSuffix := envFileMap[env]
+	if envConfigSuffix == "" {
+		envConfigSuffix = env // 如果没有映射，直接使用原环境名
+	}
+	return fmt.Sprintf("config.%s", envConfigSuffix)
+}
+
+// setupEnvironmentVars 设置环境变量支持
+func setupEnvironmentVars() error {
 	// 加载.env文件（敏感信息）
+	env := getEnvironment()
 	if err := loadEnvFile(env); err != nil {
 		// .env文件不是必须的，只记录警告
 		fmt.Printf("Warning: failed to load .env file: %v\n", err)
@@ -73,7 +119,11 @@ func Load() error {
 
 	// 手动绑定关键的环境变量到配置路径
 	bindEnvVars()
+	return nil
+}
 
+// parseAndValidateConfig 解析和验证配置
+func parseAndValidateConfig() error {
 	// 解析配置到结构体
 	AppConfig = &Config{}
 	if err := viper.Unmarshal(AppConfig); err != nil {
@@ -240,9 +290,30 @@ func validateEmailConfig(cfg *Config) error {
 
 // createDirectories 创建必要的目录
 func createDirectories(cfg *Config) error {
-	directories := []string{}
+	directories := collectDirectoriesToCreate(cfg)
+	return createDirectoriesFromList(directories)
+}
 
-	// 本地存储目录
+// collectDirectoriesToCreate 收集需要创建的目录
+func collectDirectoriesToCreate(cfg *Config) []string {
+	var directories []string
+
+	// 收集存储目录
+	directories = append(directories, collectStorageDirectories(cfg)...)
+
+	// 收集日志目录
+	directories = append(directories, collectLogDirectories(cfg)...)
+
+	// 收集国际化目录
+	directories = append(directories, collectI18nDirectories(cfg)...)
+
+	return directories
+}
+
+// collectStorageDirectories 收集存储目录
+func collectStorageDirectories(cfg *Config) []string {
+	var directories []string
+
 	if cfg.Storage.Local.Enabled {
 		directories = append(directories, cfg.Storage.Local.RootPath)
 		if cfg.Storage.Local.TempPath != "" {
@@ -250,29 +321,46 @@ func createDirectories(cfg *Config) error {
 		}
 	}
 
-	// 日志目录
+	return directories
+}
+
+// collectLogDirectories 收集日志目录
+func collectLogDirectories(cfg *Config) []string {
+	var directories []string
+
+	// 主日志目录
 	if cfg.Log.Output == "file" && cfg.Log.FilePath != "" {
 		logDir := filepath.Dir(cfg.Log.FilePath)
 		directories = append(directories, logDir)
 	}
 
+	// 访问日志目录
 	if cfg.Log.AccessLog.Enabled && cfg.Log.AccessLog.FilePath != "" {
 		accessLogDir := filepath.Dir(cfg.Log.AccessLog.FilePath)
 		directories = append(directories, accessLogDir)
 	}
 
-	// 国际化文件目录
+	return directories
+}
+
+// collectI18nDirectories 收集国际化目录
+func collectI18nDirectories(cfg *Config) []string {
+	var directories []string
+
 	if cfg.I18n.Path != "" {
 		directories = append(directories, cfg.I18n.Path)
 	}
 
-	// 创建目录
+	return directories
+}
+
+// createDirectoriesFromList 从目录列表创建目录
+func createDirectoriesFromList(directories []string) error {
 	for _, dir := range directories {
 		if err := os.MkdirAll(dir, 0750); err != nil {
 			return fmt.Errorf("failed to create directory %s: %w", dir, err)
 		}
 	}
-
 	return nil
 }
 

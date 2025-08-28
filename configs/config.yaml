@@ -97,6 +97,21 @@ email:
     expire_minutes: 10
     max_attempts: 5
 
+# 日志系统配置
+log:
+  level: "info"
+  format: "json"    # json/console
+  output: "both"    # file/console/both
+  file_path: "logs/app.log"
+  max_size: 100      # MB
+  max_age: 30        # days
+  max_backups: 5     # files
+  compress: true
+  access_log:
+    enabled: true
+    file_path: "logs/access.log"
+    format: "json"
+
 # 安全通用配置
 security:
   cors:

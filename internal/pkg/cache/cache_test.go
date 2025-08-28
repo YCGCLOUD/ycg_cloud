@@ -605,13 +605,16 @@ func (s *CacheTestSuite) TestErrorHandling() {
 	err = s.manager.Set(key, "value")
 	assert.NoError(s.T(), err)
 
-	err = s.manager.Expire(key, time.Second)
+	// 使用较长的TTL避免时间精度问题
+	expectedTTL := 10 * time.Second
+	err = s.manager.Expire(key, expectedTTL)
 	assert.NoError(s.T(), err)
 
-	// 验证TTL设置成功
+	// 验证TTL设置成功，允许一定的时间误差
 	ttl, err := s.manager.TTL(key)
 	assert.NoError(s.T(), err)
-	assert.True(s.T(), ttl > 0)
+	// TTL应该在9-10秒之间（考虑到网络延迟和时间精度）
+	assert.True(s.T(), ttl > 9*time.Second && ttl <= expectedTTL, "TTL应该在合理范围内，实际值: %v", ttl)
 }
 
 // TestAdvancedBatchOperations 测试高级批量操作

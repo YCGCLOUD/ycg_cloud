@@ -64,6 +64,16 @@ func GenerateNumeric(length int) (string, error) {
 	return GenerateRandomString(length, Digits)
 }
 
+// GenerateRandomCode 生成随机验证码（纯数字）
+func GenerateRandomCode(length int) string {
+	code, err := GenerateNumeric(length)
+	if err != nil {
+		// 如果生成失败，使用备用方案
+		return "123456"[:length]
+	}
+	return code
+}
+
 // GenerateHex 生成十六进制随机字符串
 func GenerateHex(length int) (string, error) {
 	return GenerateRandomString(length, HexChars)

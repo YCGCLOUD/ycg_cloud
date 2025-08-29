@@ -95,14 +95,44 @@ func setupAPIRoutes(r *gin.Engine) {
 
 // setupUserRoutes 设置用户相关路由
 func setupUserRoutes(rg *gin.RouterGroup) {
+	// 认证相关路由（不需要认证）
+	auth := rg.Group("/auth")
+	{
+		auth.POST("/register", func(c *gin.Context) {
+			c.JSON(200, gin.H{"message": "用户注册接口 - 待实现"})
+		})
+		auth.POST("/send-code", func(c *gin.Context) {
+			c.JSON(200, gin.H{"message": "发送验证码接口 - 待实现"})
+		})
+		auth.POST("/login", func(c *gin.Context) {
+			c.JSON(200, gin.H{"message": "用户登录接口 - 待实现"})
+		})
+		auth.POST("/refresh", func(c *gin.Context) {
+			c.JSON(200, gin.H{"message": "Token刷新接口 - 待实现"})
+		})
+		auth.POST("/forgot-password", func(c *gin.Context) {
+			c.JSON(200, gin.H{"message": "忘记密码接口 - 待实现"})
+		})
+		auth.POST("/reset-password", func(c *gin.Context) {
+			c.JSON(200, gin.H{"message": "重置密码接口 - 待实现"})
+		})
+	}
+
+	// 用户管理路由（需要认证）
 	users := rg.Group("/users")
 	{
 		// 预留用户路由
 		users.GET("", func(c *gin.Context) {
 			c.JSON(200, gin.H{"message": "用户列表接口 - 待实现"})
 		})
-		users.POST("", func(c *gin.Context) {
-			c.JSON(200, gin.H{"message": "创建用户接口 - 待实现"})
+		users.GET("/profile", func(c *gin.Context) {
+			c.JSON(200, gin.H{"message": "获取用户信息接口 - 待实现"})
+		})
+		users.PUT("/profile", func(c *gin.Context) {
+			c.JSON(200, gin.H{"message": "更新用户信息接口 - 待实现"})
+		})
+		users.POST("/change-password", func(c *gin.Context) {
+			c.JSON(200, gin.H{"message": "修改密码接口 - 待实现"})
 		})
 		users.GET("/:id", func(c *gin.Context) {
 			c.JSON(200, gin.H{"message": "获取用户详情接口 - 待实现"})

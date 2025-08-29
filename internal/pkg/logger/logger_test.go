@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -495,14 +496,16 @@ func TestSyncAndClose(t *testing.T) {
 
 	// 测试Sync
 	err := Sync()
-	if err != nil {
-		t.Errorf("Sync() should not return error: %v", err)
+	// 在Linux/Unix环境下，同步标准输出流可能会失败，这是正常的
+	if err != nil && !strings.Contains(err.Error(), "sync /dev/stdout: invalid argument") {
+		t.Errorf("Sync() returned unexpected error: %v", err)
 	}
 
 	// 测试Close
 	err = Close()
-	if err != nil {
-		t.Errorf("Close() should not return error: %v", err)
+	// 在Linux/Unix环境下，关闭标准输出流可能会失败，这是正常的
+	if err != nil && !strings.Contains(err.Error(), "sync /dev/stdout: invalid argument") {
+		t.Errorf("Close() returned unexpected error: %v", err)
 	}
 
 	// 测试Logger为nil时的Sync

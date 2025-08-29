@@ -34,6 +34,7 @@ type UserService interface {
 	CheckEmailExists(ctx context.Context, email string) (bool, error)
 	CheckUsernameExists(ctx context.Context, username string) (bool, error)
 	ValidatePassword(ctx context.Context, userID uint, password string) (bool, error)
+	UpdatePassword(ctx context.Context, userID uint, hashedPassword string) error
 
 	// 用户状态管理
 	ActivateUser(ctx context.Context, userID uint) error

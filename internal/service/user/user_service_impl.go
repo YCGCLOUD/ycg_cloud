@@ -316,6 +316,38 @@ func (s *userService) ValidatePassword(ctx context.Context, userID uint, passwor
 	return s.userRepo.ValidatePassword(ctx, user.PasswordHash, password), nil
 }
 
+// UpdatePassword 更新用户密码
+func (s *userService) UpdatePassword(ctx context.Context, userID uint, hashedPassword string) error {
+	if userID == 0 {
+		return fmt.Errorf("用户ID不能为空")
+	}
+	if hashedPassword == "" {
+		return fmt.Errorf("密码哈希值不能为空")
+	}
+
+	// 直接更新数据库中的密码字段
+	result := s.db.WithContext(ctx).Model(&models.User{}).Where("id = ?", userID).Update("password_hash", hashedPassword)
+	if result.Error != nil {
+		return fmt.Errorf("更新密码失败: %w", result.Error)
+	}
+
+	if result.RowsAffected == 0 {
+		return fmt.Errorf("用户不存在")
+	}
+
+	// 清除用户相关缓存
+	user, err := s.GetUserByID(ctx, userID)
+	if err == nil {
+		s.clearUserCache(ctx, user.Email, user.Username, user.UUID)
+		if err := s.cacheManager.Delete(fmt.Sprintf("user:id:%d", userID)); err != nil {
+			// 缓存删除失败，记录错误但不影响主流程
+			_ = err // 明确忽略错误
+		}
+	}
+
+	return nil
+}
+
 // ActivateUser 激活用户
 func (s *userService) ActivateUser(ctx context.Context, userID uint) error {
 	return s.updateUserStatus(ctx, userID, "active")

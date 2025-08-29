@@ -5,6 +5,36 @@ import (
 	"fmt"
 )
 
+// ValidationError 验证错误结构体
+type ValidationError struct {
+	Field   string `json:"field"`
+	Message string `json:"message"`
+}
+
+// Error 实现error接口
+func (e *ValidationError) Error() string {
+	return fmt.Sprintf("validation failed for field '%s': %s", e.Field, e.Message)
+}
+
+// InternalError 内部错误结构体
+type InternalError struct {
+	Message string `json:"message"`
+	Cause   error  `json:"-"`
+}
+
+// Error 实现error接口
+func (e *InternalError) Error() string {
+	if e.Cause != nil {
+		return fmt.Sprintf("%s: %v", e.Message, e.Cause)
+	}
+	return e.Message
+}
+
+// Unwrap 实现错误包装
+func (e *InternalError) Unwrap() error {
+	return e.Cause
+}
+
 // 缓存相关错误
 var (
 	// ErrCacheNotFound 缓存未找到
@@ -108,8 +138,26 @@ func WrapErrorf(err error, format string, args ...interface{}) error {
 }
 
 // NewValidationError 创建验证错误
-func NewValidationError(field string, message string) error {
-	return fmt.Errorf("validation failed for field '%s': %s", field, message)
+func NewValidationError(field string, message string) *ValidationError {
+	return &ValidationError{
+		Field:   field,
+		Message: message,
+	}
+}
+
+// NewInternalError 创建内部错误
+func NewInternalError(message string) *InternalError {
+	return &InternalError{
+		Message: message,
+	}
+}
+
+// NewInternalErrorWithCause 创建带原因的内部错误
+func NewInternalErrorWithCause(message string, cause error) *InternalError {
+	return &InternalError{
+		Message: message,
+		Cause:   cause,
+	}
 }
 
 // NewResourceError 创建资源相关错误

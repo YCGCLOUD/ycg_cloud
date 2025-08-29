@@ -3,6 +3,7 @@ package utils
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -743,5 +744,198 @@ func TestGlobalValidatorFunctions(t *testing.T) {
 
 		err = ValidatePattern("abc", `^[0-9]+$`, "字段名")
 		assert.Error(t, err)
+	})
+}
+
+// 邮箱验证码管理器测试
+func TestEmailCodeManager(t *testing.T) {
+	manager := NewEmailCodeManager()
+	assert.NotNil(t, manager)
+
+	t.Run("生成验证码", func(t *testing.T) {
+		// 测试有效的验证码类型
+		validTypes := []string{"register", "password_reset", "login", "change_email"}
+		for _, codeType := range validTypes {
+			code, err := manager.GenerateVerificationCode(codeType)
+			assert.NoError(t, err, "验证码类型 %s 应该生成成功", codeType)
+			assert.Len(t, code, 6, "验证码应该是6位")
+			assert.Regexp(t, `^[0-9]{6}$`, code, "验证码应该只包含数字")
+		}
+
+		// 测试无效的验证码类型
+		_, err := manager.GenerateVerificationCode("invalid_type")
+		assert.Error(t, err)
+	})
+
+	t.Run("生成盐值", func(t *testing.T) {
+		salt, err := manager.GenerateSalt()
+		assert.NoError(t, err)
+		assert.NotEmpty(t, salt)
+		assert.Len(t, salt, 32, "盐值应该是32位十六进制字符串")
+
+		// 测试多次生成的盐值应该不同
+		salt2, err := manager.GenerateSalt()
+		assert.NoError(t, err)
+		assert.NotEqual(t, salt, salt2, "多次生成的盐值应该不同")
+	})
+
+	t.Run("哈希验证码", func(t *testing.T) {
+		code := "123456"
+		salt := "test_salt"
+		hash := manager.HashVerificationCode(code, salt)
+		assert.NotEmpty(t, hash)
+		assert.Len(t, hash, 64, "SHA256哈希应该是64位十六进制字符串")
+
+		// 相同输入应该产生相同哈希
+		hash2 := manager.HashVerificationCode(code, salt)
+		assert.Equal(t, hash, hash2, "相同输入应该产生相同哈希")
+
+		// 不同盐值应该产生不同哈希
+		hash3 := manager.HashVerificationCode(code, "different_salt")
+		assert.NotEqual(t, hash, hash3, "不同盐值应该产生不同哈希")
+	})
+
+	t.Run("验证码格式验证", func(t *testing.T) {
+		// 有效验证码
+		validCodes := []string{"123456", "000000", "999999"}
+		for _, code := range validCodes {
+			err := manager.ValidateCodeFormat(code)
+			assert.NoError(t, err, "验证码 %s 应该是有效的", code)
+		}
+
+		// 无效验证码
+		invalidCodes := []string{
+			"",        // 空
+			"12345",   // 太短
+			"1234567", // 太长
+			"12345a",  // 包含字母
+			"12-456",  // 包含特殊字符
+			" 12345",  // 包含空格
+		}
+		for _, code := range invalidCodes {
+			err := manager.ValidateCodeFormat(code)
+			assert.Error(t, err, "验证码 %s 应该是无效的", code)
+		}
+	})
+
+	t.Run("验证码类型验证", func(t *testing.T) {
+		// 有效类型
+		validTypes := []string{"register", "password_reset", "login", "change_email"}
+		for _, codeType := range validTypes {
+			err := manager.ValidateCodeType(codeType)
+			assert.NoError(t, err, "验证码类型 %s 应该是有效的", codeType)
+		}
+
+		// 无效类型
+		invalidTypes := []string{"", "invalid", "REGISTER", "reset"}
+		for _, codeType := range invalidTypes {
+			err := manager.ValidateCodeType(codeType)
+			assert.Error(t, err, "验证码类型 %s 应该是无效的", codeType)
+		}
+	})
+
+	t.Run("验证码过期检查", func(t *testing.T) {
+		// 未过期的验证码
+		createdAt := time.Now().Add(-5 * time.Minute)
+		expired := manager.IsCodeExpired(createdAt, 15) // 15分钟过期
+		assert.False(t, expired, "5分钟前创建的验证码不应该过期")
+
+		// 已过期的验证码
+		createdAt = time.Now().Add(-20 * time.Minute)
+		expired = manager.IsCodeExpired(createdAt, 15) // 15分钟过期
+		assert.True(t, expired, "20分钟前创建的验证码应该过期")
+
+		// 默认过期时间
+		createdAt = time.Now().Add(-20 * time.Minute)
+		expired = manager.IsCodeExpired(createdAt, 0) // 使用默认15分钟
+		assert.True(t, expired, "应该使用默认15分钟过期时间")
+	})
+
+	t.Run("生成安全验证码", func(t *testing.T) {
+		// 测试不同长度
+		for length := 4; length <= 8; length++ {
+			code, err := manager.GenerateSecureCode(length)
+			assert.NoError(t, err)
+			assert.Len(t, code, length, "验证码长度应该匹配")
+			assert.Regexp(t, `^[0-9]+$`, code, "验证码应该只包含数字")
+		}
+
+		// 测试无效长度
+		invalidLengths := []int{0, -1, 11}
+		for _, length := range invalidLengths {
+			_, err := manager.GenerateSecureCode(length)
+			assert.Error(t, err, "长度 %d 应该返回错误", length)
+		}
+	})
+}
+
+// 参数验证器测试
+func TestParameterValidator(t *testing.T) {
+	validator := NewParameterValidator()
+	assert.NotNil(t, validator)
+
+	t.Run("验证必填参数", func(t *testing.T) {
+		// 有效参数
+		validParams := map[string]interface{}{
+			"name":  "test",
+			"email": "test@example.com",
+			"age":   25,
+		}
+		err := validator.ValidateRequiredParams(validParams)
+		assert.NoError(t, err)
+
+		// 包含nil值的参数
+		invalidParams := map[string]interface{}{
+			"name":  "test",
+			"email": nil,
+		}
+		err = validator.ValidateRequiredParams(invalidParams)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "email")
+
+		// 包含空字符串的参数
+		emptyParams := map[string]interface{}{
+			"name":  "",
+			"email": "test@example.com",
+		}
+		err = validator.ValidateRequiredParams(emptyParams)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "name")
+	})
+
+	t.Run("验证参数长度", func(t *testing.T) {
+		// 有效长度
+		err := validator.ValidateParamLength("test", 3, 10, "参数")
+		assert.NoError(t, err)
+
+		// 太短
+		err = validator.ValidateParamLength("ab", 3, 10, "参数")
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "不能少于")
+
+		// 太长
+		err = validator.ValidateParamLength("very long string", 3, 10, "参数")
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "不能超过")
+	})
+
+	t.Run("验证特殊字符", func(t *testing.T) {
+		// 无特殊字符
+		err := validator.ValidateSpecialChars("normal text", "参数")
+		assert.NoError(t, err)
+
+		// 包含危险字符
+		dangerousInputs := []string{
+			"text<script>",
+			"text>end",
+			"text&amp;",
+			`text"quote`,
+			"text'quote",
+			"text\nline",
+		}
+		for _, input := range dangerousInputs {
+			err := validator.ValidateSpecialChars(input, "参数")
+			assert.Error(t, err, "输入 %s 应该被拒绝", input)
+		}
 	})
 }

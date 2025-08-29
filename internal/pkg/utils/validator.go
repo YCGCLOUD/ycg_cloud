@@ -1,10 +1,14 @@
 package utils
 
 import (
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"net/mail"
 	"regexp"
 	"strings"
+	"time"
 	"unicode"
 	"unicode/utf8"
 )
@@ -19,12 +23,48 @@ type Validator interface {
 	ValidatePattern(value, pattern, fieldName string) error
 }
 
+// 邮箱验证码管理器接口
+type EmailCodeManager interface {
+	GenerateVerificationCode(codeType string) (string, error)
+	HashVerificationCode(code, salt string) string
+	GenerateSalt() (string, error)
+	ValidateCodeFormat(code string) error
+	ValidateCodeType(codeType string) error
+	IsCodeExpired(createdAt time.Time, expireMinutes int) bool
+	GenerateSecureCode(length int) (string, error)
+}
+
+// 参数校验工具接口
+type ParameterValidator interface {
+	ValidateRequiredParams(params map[string]interface{}) error
+	ValidateParamLength(value string, min, max int, paramName string) error
+	ValidateSpecialChars(value, paramName string) error
+	ValidateEmailDomainWhitelist(email string, allowedDomains []string) error
+	ValidatePasswordChangeParams(oldPassword, newPassword, confirmPassword string) error
+}
+
 // defaultValidator 默认验证器实现
 type defaultValidator struct{}
+
+// defaultEmailCodeManager 默认邮箱验证码管理器实现
+type defaultEmailCodeManager struct{}
+
+// defaultParameterValidator 默认参数校验器实现
+type defaultParameterValidator struct{}
 
 // NewValidator 创建新的验证器
 func NewValidator() Validator {
 	return &defaultValidator{}
+}
+
+// NewEmailCodeManager 创建新的邮箱验证码管理器
+func NewEmailCodeManager() EmailCodeManager {
+	return &defaultEmailCodeManager{}
+}
+
+// NewParameterValidator 创建新的参数校验器
+func NewParameterValidator() ParameterValidator {
+	return &defaultParameterValidator{}
 }
 
 // validateEmailBasicFormat 验证邮箱基本格式
@@ -274,7 +314,11 @@ func (v *defaultValidator) ValidatePattern(value, pattern, fieldName string) err
 
 // 全局便利函数
 
-var defaultValidatorInstance = NewValidator()
+var (
+	defaultValidatorInstance          = NewValidator()
+	defaultEmailCodeManagerInstance   = NewEmailCodeManager()
+	defaultParameterValidatorInstance = NewParameterValidator()
+)
 
 // ValidateEmail 验证邮箱格式
 func ValidateEmail(email string) error {
@@ -411,6 +455,210 @@ func ValidateCodeType(codeType string) error {
 	return fmt.Errorf("验证码类型不正确")
 }
 
+// 邮箱验证码管理器实现
+
+// GenerateVerificationCode 生成验证码
+func (m *defaultEmailCodeManager) GenerateVerificationCode(codeType string) (string, error) {
+	if err := m.ValidateCodeType(codeType); err != nil {
+		return "", err
+	}
+
+	// 生成6位数字验证码
+	return m.GenerateSecureCode(6)
+}
+
+// HashVerificationCode 哈希验证码
+func (m *defaultEmailCodeManager) HashVerificationCode(code, salt string) string {
+	hasher := sha256.New()
+	hasher.Write([]byte(code + salt))
+	return hex.EncodeToString(hasher.Sum(nil))
+}
+
+// GenerateSalt 生成盐值
+func (m *defaultEmailCodeManager) GenerateSalt() (string, error) {
+	bytes := make([]byte, 16)
+	_, err := rand.Read(bytes)
+	if err != nil {
+		return "", fmt.Errorf("生成盐值失败: %w", err)
+	}
+	return hex.EncodeToString(bytes), nil
+}
+
+// ValidateCodeFormat 验证验证码格式
+func (m *defaultEmailCodeManager) ValidateCodeFormat(code string) error {
+	return ValidateVerificationCode(code)
+}
+
+// ValidateCodeType 验证验证码类型
+func (m *defaultEmailCodeManager) ValidateCodeType(codeType string) error {
+	return ValidateCodeType(codeType)
+}
+
+// IsCodeExpired 检查验证码是否过期
+func (m *defaultEmailCodeManager) IsCodeExpired(createdAt time.Time, expireMinutes int) bool {
+	if expireMinutes <= 0 {
+		expireMinutes = 15 // 默认15分钟过期
+	}
+	expirationTime := createdAt.Add(time.Duration(expireMinutes) * time.Minute)
+	return time.Now().After(expirationTime)
+}
+
+// GenerateSecureCode 生成指定长度的安全验证码
+func (m *defaultEmailCodeManager) GenerateSecureCode(length int) (string, error) {
+	if length <= 0 || length > 10 {
+		return "", fmt.Errorf("验证码长度必须在1-10位之间")
+	}
+
+	bytes := make([]byte, length)
+	for i := 0; i < length; i++ {
+		b := make([]byte, 1)
+		_, err := rand.Read(b)
+		if err != nil {
+			return "", fmt.Errorf("生成验证码失败: %w", err)
+		}
+		bytes[i] = byte('0' + (b[0] % 10))
+	}
+
+	return string(bytes), nil
+}
+
+// 参数校验器实现
+
+// ValidateRequiredParams 验证必填参数
+func (p *defaultParameterValidator) ValidateRequiredParams(params map[string]interface{}) error {
+	for name, value := range params {
+		if value == nil {
+			return fmt.Errorf("参数%s不能为空", name)
+		}
+
+		// 检查字符串类型的空值
+		if str, ok := value.(string); ok {
+			if strings.TrimSpace(str) == "" {
+				return fmt.Errorf("参数%s不能为空", name)
+			}
+		}
+	}
+	return nil
+}
+
+// ValidateParamLength 验证参数长度
+func (p *defaultParameterValidator) ValidateParamLength(value string, min, max int, paramName string) error {
+	return ValidateLength(value, min, max, paramName)
+}
+
+// ValidateSpecialChars 验证特殊字符
+func (p *defaultParameterValidator) ValidateSpecialChars(value, paramName string) error {
+	// 检查是否包含危险的特殊字符
+	dangerousChars := []string{"<", ">", "&", "\"", "'", "\n", "\r", "\t"}
+	for _, char := range dangerousChars {
+		if strings.Contains(value, char) {
+			return fmt.Errorf("%s不能包含特殊字符: %s", paramName, char)
+		}
+	}
+	return nil
+}
+
+// ValidateEmailDomainWhitelist 验证邮箱域名白名单
+func (p *defaultParameterValidator) ValidateEmailDomainWhitelist(email string, allowedDomains []string) error {
+	if len(allowedDomains) == 0 {
+		return nil // 没有白名单限制
+	}
+
+	// 首先验证邮箱格式
+	if err := ValidateEmail(email); err != nil {
+		return err
+	}
+
+	// 提取域名
+	parts := strings.Split(email, "@")
+	if len(parts) != 2 {
+		return fmt.Errorf("邮箱格式不正确")
+	}
+
+	domain := strings.ToLower(parts[1])
+	for _, allowedDomain := range allowedDomains {
+		if strings.ToLower(allowedDomain) == domain {
+			return nil
+		}
+	}
+
+	return fmt.Errorf("不支持该邮箱域名，请使用其他邮箱")
+}
+
+// ValidatePasswordChangeParams 验证密码修改参数
+func (p *defaultParameterValidator) ValidatePasswordChangeParams(oldPassword, newPassword, confirmPassword string) error {
+	// 验证旧密码不为空
+	if err := ValidateRequired(oldPassword, "当前密码"); err != nil {
+		return err
+	}
+
+	// 验证新密码强度
+	if _, err := ValidatePasswordStrength(newPassword); err != nil {
+		return fmt.Errorf("新密码验证失败: %w", err)
+	}
+
+	// 验证确认密码
+	if err := ValidateConfirmPassword(newPassword, confirmPassword); err != nil {
+		return err
+	}
+
+	// 验证新旧密码不能相同
+	if oldPassword == newPassword {
+		return fmt.Errorf("新密码不能与当前密码相同")
+	}
+
+	return nil
+}
+
+// 邮箱验证码管理便利函数
+
+// GenerateEmailVerificationCode 生成邮箱验证码
+func GenerateEmailVerificationCode(codeType string) (string, error) {
+	return defaultEmailCodeManagerInstance.GenerateVerificationCode(codeType)
+}
+
+// HashEmailVerificationCode 哈希邮箱验证码
+func HashEmailVerificationCode(code, salt string) string {
+	return defaultEmailCodeManagerInstance.HashVerificationCode(code, salt)
+}
+
+// GenerateCodeSalt 生成验证码盐值
+func GenerateCodeSalt() (string, error) {
+	return defaultEmailCodeManagerInstance.GenerateSalt()
+}
+
+// IsVerificationCodeExpired 检查验证码是否过期
+func IsVerificationCodeExpired(createdAt time.Time, expireMinutes int) bool {
+	return defaultEmailCodeManagerInstance.IsCodeExpired(createdAt, expireMinutes)
+}
+
+// 参数校验便利函数
+
+// ValidateRequiredParameters 验证必填参数
+func ValidateRequiredParameters(params map[string]interface{}) error {
+	return defaultParameterValidatorInstance.ValidateRequiredParams(params)
+}
+
+// ValidateParameterLength 验证参数长度
+func ValidateParameterLength(value string, min, max int, paramName string) error {
+	return defaultParameterValidatorInstance.ValidateParamLength(value, min, max, paramName)
+}
+
+// ValidateParameterSpecialChars 验证参数特殊字符
+func ValidateParameterSpecialChars(value, paramName string) error {
+	return defaultParameterValidatorInstance.ValidateSpecialChars(value, paramName)
+}
+
+// ValidateEmailDomain 验证邮箱域名白名单
+func ValidateEmailDomain(email string, allowedDomains []string) error {
+	return defaultParameterValidatorInstance.ValidateEmailDomainWhitelist(email, allowedDomains)
+}
+
+// ValidatePasswordChange 验证密码修改参数
+func ValidatePasswordChange(oldPassword, newPassword, confirmPassword string) error {
+	return defaultParameterValidatorInstance.ValidatePasswordChangeParams(oldPassword, newPassword, confirmPassword)
+}
+
 // 批量验证函数
 
 // ValidateUserRegistration 验证用户注册数据
@@ -443,6 +691,46 @@ func ValidateUserRegistration(email, username, password, confirmPassword, displa
 	// 验证接受条款
 	if err := ValidateAcceptTerms(acceptTerms); err != nil {
 		return fmt.Errorf("服务条款验证失败: %w", err)
+	}
+
+	return nil
+}
+
+// ValidatePasswordResetRequest 验证密码重置请求
+func ValidatePasswordResetRequest(email string) error {
+	// 验证邮箱格式
+	if err := ValidateEmail(email); err != nil {
+		return fmt.Errorf("邮箱验证失败: %w", err)
+	}
+
+	// 验证参数安全性
+	if err := ValidateParameterSpecialChars(email, "邮箱"); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// ValidatePasswordResetConfirm 验证密码重置确认
+func ValidatePasswordResetConfirm(email, code, newPassword, confirmPassword string) error {
+	// 验证邮箱
+	if err := ValidateEmail(email); err != nil {
+		return fmt.Errorf("邮箱验证失败: %w", err)
+	}
+
+	// 验证验证码格式
+	if err := ValidateVerificationCode(code); err != nil {
+		return fmt.Errorf("验证码验证失败: %w", err)
+	}
+
+	// 验证新密码强度
+	if _, err := ValidatePasswordStrength(newPassword); err != nil {
+		return fmt.Errorf("新密码验证失败: %w", err)
+	}
+
+	// 验证确认密码
+	if err := ValidateConfirmPassword(newPassword, confirmPassword); err != nil {
+		return err
 	}
 
 	return nil

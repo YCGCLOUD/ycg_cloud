@@ -1,13 +1,20 @@
 package utils
 
 import (
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/md5" // #nosec G501 - 仅用于文件校验，非安全用途
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
+	"encoding/hex"
 	"fmt"
 	"regexp"
 	"strings"
+	"time"
 
+	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -25,6 +32,13 @@ const (
 	MaxCost     = 31 // 最大成本
 )
 
+// JWT相关常量
+const (
+	DefaultJWTExpiry     = 24 * time.Hour     // 默认JWT过期时间（24小时）
+	DefaultRefreshExpiry = 7 * 24 * time.Hour // 默认刷新令牌过期时间（7天）
+	MinSecretKeyLength   = 32                 // 最小密钥长度
+)
+
 // PasswordHasher 密码哈希器接口
 type PasswordHasher interface {
 	HashPassword(password string) (string, error)
@@ -33,10 +47,45 @@ type PasswordHasher interface {
 	GenerateSecurePassword(length int) (string, error)
 }
 
+// JWTClaims JWT负载结构体
+type JWTClaims struct {
+	UserID    uint64 `json:"user_id"`
+	Username  string `json:"username"`
+	Email     string `json:"email"`
+	Role      string `json:"role"`
+	TokenType string `json:"token_type"` // "access" 或 "refresh"
+	jwt.RegisteredClaims
+}
+
+// JWTManager JWT管理器接口
+type JWTManager interface {
+	GenerateAccessToken(userID uint64, username, email, role string) (string, error)
+	GenerateRefreshToken(userID uint64, username, email, role string) (string, error)
+	ValidateToken(tokenString string) (*JWTClaims, error)
+	RefreshToken(refreshToken string) (string, string, error)
+}
+
+// AESCrypto AES加密接口
+type AESCrypto interface {
+	Encrypt(plaintext string, key string) (string, error)
+	Decrypt(ciphertext string, key string) (string, error)
+	GenerateKey() (string, error)
+}
+
 // bcryptHasher BCrypt密码哈希器实现
 type bcryptHasher struct {
 	cost int
 }
+
+// jwtManager JWT管理器实现
+type jwtManager struct {
+	secretKey     []byte
+	accessExpiry  time.Duration
+	refreshExpiry time.Duration
+}
+
+// aesCrypto AES加密实现
+type aesCrypto struct{}
 
 // NewPasswordHasher 创建新的密码哈希器
 func NewPasswordHasher(cost int) PasswordHasher {
@@ -398,4 +447,274 @@ func hasSequentialChars(password string, maxSequential int) bool {
 		}
 	}
 	return false
+}
+
+// ==== JWT 相关实现 ====
+
+// NewJWTManager 创建新的JWT管理器
+func NewJWTManager(secretKey string, accessExpiry, refreshExpiry time.Duration) (JWTManager, error) {
+	if len(secretKey) < MinSecretKeyLength {
+		return nil, fmt.Errorf("密钥长度不能小于%d个字符", MinSecretKeyLength)
+	}
+
+	if accessExpiry <= 0 {
+		accessExpiry = DefaultJWTExpiry
+	}
+	if refreshExpiry <= 0 {
+		refreshExpiry = DefaultRefreshExpiry
+	}
+
+	return &jwtManager{
+		secretKey:     []byte(secretKey),
+		accessExpiry:  accessExpiry,
+		refreshExpiry: refreshExpiry,
+	}, nil
+}
+
+// NewDefaultJWTManager 创建默认的JWT管理器
+func NewDefaultJWTManager(secretKey string) (JWTManager, error) {
+	return NewJWTManager(secretKey, DefaultJWTExpiry, DefaultRefreshExpiry)
+}
+
+// GenerateAccessToken 生成访问令牌
+func (j *jwtManager) GenerateAccessToken(userID uint64, username, email, role string) (string, error) {
+	return j.generateToken(userID, username, email, role, "access", j.accessExpiry)
+}
+
+// GenerateRefreshToken 生成刷新令牌
+func (j *jwtManager) GenerateRefreshToken(userID uint64, username, email, role string) (string, error) {
+	return j.generateToken(userID, username, email, role, "refresh", j.refreshExpiry)
+}
+
+// generateToken 生成令牌（内部方法）
+func (j *jwtManager) generateToken(userID uint64, username, email, role, tokenType string, expiry time.Duration) (string, error) {
+	now := time.Now()
+
+	// 生成唯一的JTI
+	jti, err := GenerateRandomToken(16) // 16字节的随机令牌
+	if err != nil {
+		return "", fmt.Errorf("生成JTI失败: %w", err)
+	}
+
+	claims := &JWTClaims{
+		UserID:    userID,
+		Username:  username,
+		Email:     email,
+		Role:      role,
+		TokenType: tokenType,
+		RegisteredClaims: jwt.RegisteredClaims{
+			ID:        jti, // 添加唯一标识符
+			IssuedAt:  jwt.NewNumericDate(now),
+			ExpiresAt: jwt.NewNumericDate(now.Add(expiry)),
+			NotBefore: jwt.NewNumericDate(now),
+			Issuer:    "cloudpan",
+			Subject:   fmt.Sprintf("%d", userID),
+		},
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	return token.SignedString(j.secretKey)
+}
+
+// ValidateToken 验证令牌
+func (j *jwtManager) ValidateToken(tokenString string) (*JWTClaims, error) {
+	token, err := jwt.ParseWithClaims(tokenString, &JWTClaims{}, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("签名算法不支持: %v", token.Header["alg"])
+		}
+		return j.secretKey, nil
+	})
+
+	if err != nil {
+		return nil, fmt.Errorf("令牌解析失败: %w", err)
+	}
+
+	claims, ok := token.Claims.(*JWTClaims)
+	if !ok || !token.Valid {
+		return nil, fmt.Errorf("令牌无效")
+	}
+
+	return claims, nil
+}
+
+// RefreshToken 刷新令牌
+func (j *jwtManager) RefreshToken(refreshToken string) (string, string, error) {
+	claims, err := j.ValidateToken(refreshToken)
+	if err != nil {
+		return "", "", fmt.Errorf("刷新令牌无效: %w", err)
+	}
+
+	if claims.TokenType != "refresh" {
+		return "", "", fmt.Errorf("令牌类型错误，期望刷新令牌")
+	}
+
+	// 生成新的访问令牌和刷新令牌
+	newAccessToken, err := j.GenerateAccessToken(claims.UserID, claims.Username, claims.Email, claims.Role)
+	if err != nil {
+		return "", "", fmt.Errorf("生成访问令牌失败: %w", err)
+	}
+
+	newRefreshToken, err := j.GenerateRefreshToken(claims.UserID, claims.Username, claims.Email, claims.Role)
+	if err != nil {
+		return "", "", fmt.Errorf("生成刷新令牌失败: %w", err)
+	}
+
+	return newAccessToken, newRefreshToken, nil
+}
+
+// ==== 随机字符串生成工具 ====
+
+// GenerateVerificationCode 生成数字验证码
+func GenerateVerificationCode(length int) (string, error) {
+	if length <= 0 {
+		length = 6 // 默认6位
+	}
+	if length > 10 {
+		length = 10 // 最多10位
+	}
+
+	digits := "0123456789"
+	result := make([]byte, length)
+
+	for i := 0; i < length; i++ {
+		char, err := randomChar(digits)
+		if err != nil {
+			return "", fmt.Errorf("生成验证码失败: %w", err)
+		}
+		result[i] = char
+	}
+
+	return string(result), nil
+}
+
+// GenerateRandomToken 生成随机令牌（使用base64编码）
+func GenerateRandomToken(byteLength int) (string, error) {
+	if byteLength <= 0 {
+		byteLength = 32 // 默认32字节
+	}
+
+	bytes := make([]byte, byteLength)
+	if _, err := rand.Read(bytes); err != nil {
+		return "", fmt.Errorf("生成随机令牌失败: %w", err)
+	}
+
+	return base64.URLEncoding.EncodeToString(bytes), nil
+}
+
+// ==== AES加密解密实现 ====
+
+// NewAESCrypto 创建新的AES加密器
+func NewAESCrypto() AESCrypto {
+	return &aesCrypto{}
+}
+
+// GenerateKey 生成AES密钥
+func (a *aesCrypto) GenerateKey() (string, error) {
+	key := make([]byte, 32) // AES-256
+	if _, err := rand.Read(key); err != nil {
+		return "", fmt.Errorf("生成AES密钥失败: %w", err)
+	}
+	return base64.StdEncoding.EncodeToString(key), nil
+}
+
+// Encrypt AES加密
+func (a *aesCrypto) Encrypt(plaintext string, key string) (string, error) {
+	keyBytes, err := base64.StdEncoding.DecodeString(key)
+	if err != nil {
+		return "", fmt.Errorf("密钥解码失败: %w", err)
+	}
+
+	block, err := aes.NewCipher(keyBytes)
+	if err != nil {
+		return "", fmt.Errorf("创建AES密码器失败: %w", err)
+	}
+
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", fmt.Errorf("创建GCM模式失败: %w", err)
+	}
+
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err := rand.Read(nonce); err != nil {
+		return "", fmt.Errorf("生成随机数失败: %w", err)
+	}
+
+	ciphertext := gcm.Seal(nonce, nonce, []byte(plaintext), nil)
+	return base64.StdEncoding.EncodeToString(ciphertext), nil
+}
+
+// Decrypt AES解密
+func (a *aesCrypto) Decrypt(ciphertext string, key string) (string, error) {
+	keyBytes, err := base64.StdEncoding.DecodeString(key)
+	if err != nil {
+		return "", fmt.Errorf("密钥解码失败: %w", err)
+	}
+
+	ciphertextBytes, err := base64.StdEncoding.DecodeString(ciphertext)
+	if err != nil {
+		return "", fmt.Errorf("密文解码失败: %w", err)
+	}
+
+	block, err := aes.NewCipher(keyBytes)
+	if err != nil {
+		return "", fmt.Errorf("创建AES密码器失败: %w", err)
+	}
+
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", fmt.Errorf("创建GCM模式失败: %w", err)
+	}
+
+	nonceSize := gcm.NonceSize()
+	if len(ciphertextBytes) < nonceSize {
+		return "", fmt.Errorf("密文长度不足")
+	}
+
+	nonce, ciphertext2 := ciphertextBytes[:nonceSize], ciphertextBytes[nonceSize:]
+	plaintext, err := gcm.Open(nil, nonce, ciphertext2, nil)
+	if err != nil {
+		return "", fmt.Errorf("解密失败: %w", err)
+	}
+
+	return string(plaintext), nil
+}
+
+// ==== 哈希算法实现 ====
+
+// MD5Hash 计算MD5哈希值
+// #nosec G401 - MD5仅用于文件完整性检查，非安全关键用途
+func MD5Hash(data string) string {
+	hash := md5.Sum([]byte(data)) // #nosec G401 - 非安全用途
+	return hex.EncodeToString(hash[:])
+}
+
+// SHA256Hash 计算SHA256哈希值
+func SHA256Hash(data string) string {
+	hash := sha256.Sum256([]byte(data))
+	return hex.EncodeToString(hash[:])
+}
+
+// SHA256HashWithSalt 计算带盐的SHA256哈希值
+func SHA256HashWithSalt(data, salt string) string {
+	return SHA256Hash(data + salt)
+}
+
+// ==== 全局便利函数 ====
+
+// EncryptAES AES加密（使用默认加密器）
+func EncryptAES(plaintext, key string) (string, error) {
+	crypto := NewAESCrypto()
+	return crypto.Encrypt(plaintext, key)
+}
+
+// DecryptAES AES解密（使用默认加密器）
+func DecryptAES(ciphertext, key string) (string, error) {
+	crypto := NewAESCrypto()
+	return crypto.Decrypt(ciphertext, key)
+}
+
+// GenerateAESKey 生成AES密钥（使用默认加密器）
+func GenerateAESKey() (string, error) {
+	crypto := NewAESCrypto()
+	return crypto.GenerateKey()
 }

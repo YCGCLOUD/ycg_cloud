@@ -2,10 +2,22 @@ package routes
 
 import (
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 
+	"cloudpan/internal/api/handlers"
 	"cloudpan/internal/api/middleware"
 	"cloudpan/internal/pkg/config"
+	"cloudpan/internal/pkg/logger"
+	"cloudpan/internal/service/user"
 )
+
+// getLogger 获取logger实例，如果logger没有初始化则使用默认的nop logger
+func getLogger() *zap.Logger {
+	if logger.Logger != nil {
+		return logger.Logger
+	}
+	return zap.NewNop()
+}
 
 // SetupRouter 设置路由
 func SetupRouter() *gin.Engine {
@@ -95,6 +107,19 @@ func setupAPIRoutes(r *gin.Engine) {
 
 // setupUserRoutes 设置用户相关路由
 func setupUserRoutes(rg *gin.RouterGroup) {
+	// 初始化登录处理器
+	// 注意：这里需要传入用户服务实例，在实际项目中应该从依赖注入获取
+	// 这里使用nil作为占位符，实际部署时需要修改
+	var userService user.UserService // 需要在实际项目中初始化
+	var secretKey string = config.AppConfig.JWT.Secret
+
+	loginHandler, err := handlers.NewUserLoginHandler(userService, getLogger(), secretKey)
+	if err != nil {
+		// 在实际项目中应该返回错误或记录日志
+		getLogger().Error("Failed to create login handler", zap.Error(err))
+		return
+	}
+
 	// 认证相关路由（不需要认证）
 	auth := rg.Group("/auth")
 	{
@@ -104,12 +129,19 @@ func setupUserRoutes(rg *gin.RouterGroup) {
 		auth.POST("/send-code", func(c *gin.Context) {
 			c.JSON(200, gin.H{"message": "发送验证码接口 - 待实现"})
 		})
-		auth.POST("/login", func(c *gin.Context) {
-			c.JSON(200, gin.H{"message": "用户登录接口 - 待实现"})
-		})
-		auth.POST("/refresh", func(c *gin.Context) {
-			c.JSON(200, gin.H{"message": "Token刷新接口 - 待实现"})
-		})
+		// 使用实际的登录处理器
+		if loginHandler != nil {
+			auth.POST("/login", loginHandler.Login)
+			auth.POST("/refresh", loginHandler.RefreshToken)
+		} else {
+			// 备用处理器
+			auth.POST("/login", func(c *gin.Context) {
+				c.JSON(500, gin.H{"message": "登录服务初始化失败"})
+			})
+			auth.POST("/refresh", func(c *gin.Context) {
+				c.JSON(500, gin.H{"message": "令牌刷新服务初始化失败"})
+			})
+		}
 		auth.POST("/forgot-password", func(c *gin.Context) {
 			c.JSON(200, gin.H{"message": "忘记密码接口 - 待实现"})
 		})
@@ -118,8 +150,16 @@ func setupUserRoutes(rg *gin.RouterGroup) {
 		})
 	}
 
+	// 初始化认证中间件
+	authMiddleware, err := middleware.NewAuthMiddleware(secretKey, getLogger())
+	if err != nil {
+		getLogger().Error("Failed to create auth middleware", zap.Error(err))
+		return
+	}
+
 	// 用户管理路由（需要认证）
 	users := rg.Group("/users")
+	users.Use(authMiddleware.RequireAuth()) // 使用JWT认证中间件
 	{
 		// 预留用户路由
 		users.GET("", func(c *gin.Context) {
@@ -134,13 +174,13 @@ func setupUserRoutes(rg *gin.RouterGroup) {
 		users.POST("/change-password", func(c *gin.Context) {
 			c.JSON(200, gin.H{"message": "修改密码接口 - 待实现"})
 		})
-		users.GET("/:id", func(c *gin.Context) {
+		users.GET("/:id", authMiddleware.RequireRole("admin"), func(c *gin.Context) {
 			c.JSON(200, gin.H{"message": "获取用户详情接口 - 待实现"})
 		})
-		users.PUT("/:id", func(c *gin.Context) {
+		users.PUT("/:id", authMiddleware.RequireRole("admin"), func(c *gin.Context) {
 			c.JSON(200, gin.H{"message": "更新用户接口 - 待实现"})
 		})
-		users.DELETE("/:id", func(c *gin.Context) {
+		users.DELETE("/:id", authMiddleware.RequireRole("admin"), func(c *gin.Context) {
 			c.JSON(200, gin.H{"message": "删除用户接口 - 待实现"})
 		})
 	}

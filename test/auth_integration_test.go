@@ -12,17 +12,15 @@ import (
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/zap"
 
-	"cloudpan/internal/api/handlers"
 	"cloudpan/internal/api/middleware"
 	"cloudpan/internal/pkg/utils"
 )
 
 // AuthIntegrationTest 认证集成测试套件
 type AuthIntegrationTest struct {
-	router       *gin.Engine
-	authMW       *middleware.AuthMiddleware
-	loginHandler *handlers.UserLoginHandler
-	testSecret   string
+	router     *gin.Engine
+	authMW     *middleware.AuthMiddleware
+	testSecret string
 }
 
 // setupAuthIntegrationTest 设置认证集成测试环境

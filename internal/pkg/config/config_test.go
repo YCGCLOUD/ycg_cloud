@@ -2,8 +2,12 @@ package config
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestLoad(t *testing.T) {
@@ -61,18 +65,11 @@ func TestLoad(t *testing.T) {
 	}
 
 	// 验证配置是否正确加载
-	if AppConfig == nil {
-		t.Fatal("AppConfig is nil after loading")
-	}
+	assert.NotNil(t, AppConfig, "AppConfig should not be nil after loading")
 
 	// 验证基本配置
-	if AppConfig.App.Name == "" {
-		t.Error("App name should not be empty")
-	}
-
-	if AppConfig.Server.Port <= 0 {
-		t.Error("Server port should be positive")
-	}
+	assert.NotEmpty(t, AppConfig.App.Name, "App name should not be empty")
+	assert.Positive(t, AppConfig.Server.Port, "Server port should be positive")
 }
 
 func TestLoadWithError(t *testing.T) {
@@ -129,16 +126,12 @@ func TestValidateConfig(t *testing.T) {
 	}
 
 	err := validateConfig(cfg)
-	if err != nil {
-		t.Errorf("Valid config should not return error: %v", err)
-	}
+	assert.NoError(t, err, "Valid config should not return error")
 
 	// 测试无效配置
 	invalidCfg := &Config{}
 	err = validateConfig(invalidCfg)
-	if err == nil {
-		t.Error("Invalid config should return error")
-	}
+	assert.Error(t, err, "Invalid config should return error")
 }
 
 func TestConfigHelper(t *testing.T) {
@@ -476,4 +469,625 @@ func TestEnvironmentCheck(t *testing.T) {
 	if IsDevelopment() {
 		t.Error("Should not be development environment")
 	}
+}
+
+// 新增的测试用例，提升覆盖率
+
+// TestGetEnvironment 测试环境获取函数
+func TestGetEnvironment(t *testing.T) {
+	tests := []struct {
+		name     string
+		envValue string
+		expected string
+	}{
+		{
+			name:     "default environment",
+			envValue: "",
+			expected: "development",
+		},
+		{
+			name:     "production environment",
+			envValue: "production",
+			expected: "production",
+		},
+		{
+			name:     "testing environment",
+			envValue: "testing",
+			expected: "testing",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			originalEnv := os.Getenv("GO_ENV")
+			defer os.Setenv("GO_ENV", originalEnv)
+
+			os.Setenv("GO_ENV", tt.envValue)
+			actual := getEnvironment()
+			assert.Equal(t, tt.expected, actual)
+		})
+	}
+}
+
+// TestGetEnvConfigName 测试环境配置文件名获取
+func TestGetEnvConfigName(t *testing.T) {
+	tests := []struct {
+		name     string
+		env      string
+		expected string
+	}{
+		{"development", "development", "config.dev"},
+		{"testing", "testing", "config.test"},
+		{"production", "production", "config.prod"},
+		{"custom", "custom", "config.custom"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			actual := getEnvConfigName(tt.env)
+			assert.Equal(t, tt.expected, actual)
+		})
+	}
+}
+
+// TestValidateRequired 测试必填字段验证
+func TestValidateRequired(t *testing.T) {
+	tests := []struct {
+		name      string
+		fieldName string
+		value     string
+		wantErr   bool
+	}{
+		{"valid value", "test_field", "valid_value", false},
+		{"empty value", "test_field", "", true},
+		{"whitespace value", "test_field", "   ", false}, // 空白字符不算空
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateRequired(tt.fieldName, tt.value)
+			if tt.wantErr {
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), tt.fieldName)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+// TestValidateRange 测试数值范围验证
+func TestValidateRange(t *testing.T) {
+	tests := []struct {
+		name      string
+		fieldName string
+		value     int
+		min       int
+		max       int
+		wantErr   bool
+	}{
+		{"valid range", "port", 8080, 1, 65535, false},
+		{"minimum value", "port", 1, 1, 65535, false},
+		{"maximum value", "port", 65535, 1, 65535, false},
+		{"below minimum", "port", 0, 1, 65535, true},
+		{"above maximum", "port", 65536, 1, 65535, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateRange(tt.fieldName, tt.value, tt.min, tt.max)
+			if tt.wantErr {
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), tt.fieldName)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+// TestValidateMinLength 测试最小长度验证
+func TestValidateMinLength(t *testing.T) {
+	tests := []struct {
+		name      string
+		fieldName string
+		value     string
+		minLength int
+		wantErr   bool
+	}{
+		{"valid length", "secret", "long_enough_secret", 10, false},
+		{"exact minimum", "secret", "1234567890", 10, false},
+		{"too short", "secret", "short", 10, true},
+		{"empty string", "secret", "", 1, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateMinLength(tt.fieldName, tt.value, tt.minLength)
+			if tt.wantErr {
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), tt.fieldName)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+// TestValidateOSSConfig 测试OSS配置验证
+func TestValidateOSSConfig(t *testing.T) {
+	tests := []struct {
+		name    string
+		config  *Config
+		wantErr bool
+	}{
+		{
+			name: "valid OSS config",
+			config: &Config{
+				Storage: StorageConfig{
+					OSS: OSSStorageConfig{
+						Enabled:         true,
+						AccessKeyID:     "test_key_id",
+						AccessKeySecret: "test_key_secret",
+						BucketName:      "test_bucket",
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "missing access key ID",
+			config: &Config{
+				Storage: StorageConfig{
+					OSS: OSSStorageConfig{
+						Enabled:         true,
+						AccessKeySecret: "test_key_secret",
+						BucketName:      "test_bucket",
+					},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "missing access key secret",
+			config: &Config{
+				Storage: StorageConfig{
+					OSS: OSSStorageConfig{
+						Enabled:     true,
+						AccessKeyID: "test_key_id",
+						BucketName:  "test_bucket",
+					},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "missing bucket name",
+			config: &Config{
+				Storage: StorageConfig{
+					OSS: OSSStorageConfig{
+						Enabled:         true,
+						AccessKeyID:     "test_key_id",
+						AccessKeySecret: "test_key_secret",
+					},
+				},
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateOSSConfig(tt.config)
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+// TestCreateDirectories 测试目录创建
+func TestCreateDirectories(t *testing.T) {
+	// 创建临时目录用于测试
+	tempDir := filepath.Join(os.TempDir(), "config_test_dirs")
+	defer os.RemoveAll(tempDir)
+
+	cfg := &Config{
+		Storage: StorageConfig{
+			Local: LocalStorageConfig{
+				Enabled:  true,
+				RootPath: filepath.Join(tempDir, "storage"),
+				TempPath: filepath.Join(tempDir, "temp"),
+			},
+		},
+		Log: LogConfig{
+			Output:   "file",
+			FilePath: filepath.Join(tempDir, "logs", "app.log"),
+			AccessLog: AccessLogConfig{
+				Enabled:  true,
+				FilePath: filepath.Join(tempDir, "logs", "access.log"),
+			},
+		},
+		I18n: I18nConfig{
+			Path: filepath.Join(tempDir, "i18n"),
+		},
+	}
+
+	err := createDirectories(cfg)
+	assert.NoError(t, err)
+
+	// 验证目录是否创建成功
+	expectedDirs := []string{
+		filepath.Join(tempDir, "storage"),
+		filepath.Join(tempDir, "temp"),
+		filepath.Join(tempDir, "logs"),
+		filepath.Join(tempDir, "i18n"),
+	}
+
+	for _, dir := range expectedDirs {
+		_, err := os.Stat(dir)
+		assert.NoError(t, err, "Directory %s should exist", dir)
+	}
+}
+
+// TestLoadConfigFromFile 测试从指定文件加载配置
+func TestLoadConfigFromFile(t *testing.T) {
+	// 创建临时配置文件
+	tempFile := filepath.Join(os.TempDir(), "test_config.yaml")
+	defer os.Remove(tempFile)
+
+	configContent := `
+app:
+  name: "test-app"
+  version: "1.0.0"
+  env: "test"
+server:
+  host: "localhost"
+  port: 8080
+database:
+  mysql:
+    host: "localhost"
+    username: "test"
+    dbname: "test_db"
+redis:
+  host: "localhost"
+jwt:
+  secret: "this_is_a_very_long_secret_key_for_testing_purposes_123456"
+storage:
+  local:
+    enabled: true
+    root_path: "/tmp/test"
+email:
+  smtp:
+    host: "smtp.test.com"
+    from_email: "test@test.com"
+`
+
+	err := os.WriteFile(tempFile, []byte(configContent), 0644)
+	require.NoError(t, err)
+
+	// 清理之前的全局配置
+	AppConfig = nil
+
+	// 加载配置
+	err = LoadFromFile(tempFile)
+	assert.NoError(t, err)
+
+	// 验证配置
+	assert.NotNil(t, AppConfig)
+	assert.Equal(t, "test-app", AppConfig.App.Name)
+	assert.Equal(t, 8080, AppConfig.Server.Port)
+}
+
+// TestLoadFromFileWithInvalidPath 测试加载不存在的文件
+func TestLoadFromFileWithInvalidPath(t *testing.T) {
+	err := LoadFromFile("/nonexistent/config.yaml")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to read config file")
+}
+
+// TestSetupViperConfig 测试Viper配置设置
+func TestSetupViperConfig(t *testing.T) {
+	err := setupViperConfig()
+	assert.NoError(t, err)
+}
+
+// TestCollectDirectories 测试目录收集函数
+func TestCollectDirectories(t *testing.T) {
+	cfg := &Config{
+		Storage: StorageConfig{
+			Local: LocalStorageConfig{
+				Enabled:  true,
+				RootPath: "/test/storage",
+				TempPath: "/test/temp",
+			},
+		},
+		Log: LogConfig{
+			Output:   "file",
+			FilePath: "/test/logs/app.log",
+			AccessLog: AccessLogConfig{
+				Enabled:  true,
+				FilePath: "/test/logs/access.log",
+			},
+		},
+		I18n: I18nConfig{
+			Path: "/test/i18n",
+		},
+	}
+
+	// 测试收集存储目录
+	storageDirs := collectStorageDirectories(cfg)
+	assert.Contains(t, storageDirs, "/test/storage")
+	assert.Contains(t, storageDirs, "/test/temp")
+
+	// 测试收集日志目录
+	logDirs := collectLogDirectories(cfg)
+	expectedLogDir := filepath.Dir("/test/logs/app.log")
+	assert.Contains(t, logDirs, expectedLogDir)
+
+	// 测试收集国际化目录
+	i18nDirs := collectI18nDirectories(cfg)
+	assert.Contains(t, i18nDirs, "/test/i18n")
+
+	// 测试收集所有目录
+	allDirs := collectDirectoriesToCreate(cfg)
+	expectedDirs := []string{"/test/storage", "/test/temp", filepath.Dir("/test/logs/app.log"), "/test/i18n"}
+	for _, expected := range expectedDirs {
+		found := false
+		for _, actual := range allDirs {
+			if filepath.Clean(actual) == filepath.Clean(expected) {
+				found = true
+				break
+			}
+		}
+		assert.True(t, found, "Directory %s should be in the list", expected)
+	}
+}
+
+// TestConfigHelperGetAvatarPath 测试获取头像路径
+func TestConfigHelperGetAvatarPath(t *testing.T) {
+	cfg := &Config{
+		Storage: StorageConfig{
+			Local: LocalStorageConfig{
+				RootPath: "/test/storage",
+			},
+		},
+		User: UserConfig{
+			Avatar: AvatarConfig{
+				PathTemplate: "/user-{user_id}/avatars/",
+			},
+		},
+	}
+
+	helper := NewConfigHelper(cfg)
+	avatarPath := helper.GetAvatarPath(123)
+	expected := "/test/storage/user-123/avatars/"
+	assert.Equal(t, expected, avatarPath)
+}
+
+// TestConfigHelperGetAvatarFilename 测试获取头像文件名
+func TestConfigHelperGetAvatarFilename(t *testing.T) {
+	cfg := &Config{
+		User: UserConfig{
+			Avatar: AvatarConfig{
+				FilenameTemplate: "avatar_{timestamp}.{ext}",
+			},
+		},
+	}
+
+	helper := NewConfigHelper(cfg)
+	filename := helper.GetAvatarFilename("jpg")
+	assert.Contains(t, filename, "avatar_")
+	assert.Contains(t, filename, ".jpg")
+}
+
+// TestConfigHelperIsAllowedFileType 测试文件类型检查
+func TestConfigHelperIsAllowedFileType(t *testing.T) {
+	tests := []struct {
+		name         string
+		allowedTypes []string
+		mimeType     string
+		expected     bool
+	}{
+		{"allowed type", []string{"image/jpeg", "image/png"}, "image/jpeg", true},
+		{"not allowed type", []string{"image/jpeg", "image/png"}, "text/plain", false},
+		{"no restrictions", []string{}, "text/plain", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &Config{
+				Storage: StorageConfig{
+					Local: LocalStorageConfig{
+						AllowedTypes: tt.allowedTypes,
+					},
+				},
+			}
+			helper := NewConfigHelper(cfg)
+			result := helper.IsAllowedFileType(tt.mimeType)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+// TestConfigHelperPasswordValidation 测试密码验证
+func TestConfigHelperPasswordValidation(t *testing.T) {
+	tests := []struct {
+		name     string
+		password string
+		config   PasswordConfig
+		wantErr  bool
+	}{
+		{
+			name:     "valid password",
+			password: "Password123",
+			config: PasswordConfig{
+				MinLength:     8,
+				MaxLength:     32,
+				RequireNumber: true,
+				RequireLetter: true,
+			},
+			wantErr: false,
+		},
+		{
+			name:     "too short",
+			password: "Pass1",
+			config: PasswordConfig{
+				MinLength:     8,
+				MaxLength:     32,
+				RequireNumber: true,
+				RequireLetter: true,
+			},
+			wantErr: true,
+		},
+		{
+			name:     "no number",
+			password: "Password",
+			config: PasswordConfig{
+				MinLength:     8,
+				MaxLength:     32,
+				RequireNumber: true,
+				RequireLetter: true,
+			},
+			wantErr: true,
+		},
+		{
+			name:     "no letter",
+			password: "12345678",
+			config: PasswordConfig{
+				MinLength:     8,
+				MaxLength:     32,
+				RequireNumber: true,
+				RequireLetter: true,
+			},
+			wantErr: true,
+		},
+		{
+			name:     "requires special char",
+			password: "Password123",
+			config: PasswordConfig{
+				MinLength:      8,
+				MaxLength:      32,
+				RequireNumber:  true,
+				RequireLetter:  true,
+				RequireSpecial: true,
+			},
+			wantErr: true,
+		},
+		{
+			name:     "with special char",
+			password: "Password123!",
+			config: PasswordConfig{
+				MinLength:      8,
+				MaxLength:      32,
+				RequireNumber:  true,
+				RequireLetter:  true,
+				RequireSpecial: true,
+			},
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &Config{
+				User: UserConfig{
+					Password: tt.config,
+				},
+			}
+			helper := NewConfigHelper(cfg)
+			err := helper.IsPasswordValid(tt.password)
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+// TestBindEnvVars 测试环境变量绑定
+func TestBindEnvVars(t *testing.T) {
+	// 这个测试可能需要修改全局状态，所以只测试函数不报错
+	bindEnvVars()
+	// 如果函数能正常运行到这里，说明没有问题
+}
+
+// TestLoadEnvFile 测试加载.env文件
+func TestLoadEnvFile(t *testing.T) {
+	// 测试加载不存在的.env文件
+	err := loadEnvFile("nonexistent")
+	assert.Error(t, err) // 应该返回错误
+
+	// 测试空环境
+	err = loadEnvFile("")
+	assert.Error(t, err) // 应该返回错误
+}
+
+// TestConfigHelperJWTExpiration 测试JWT过期时间
+func TestConfigHelperJWTExpiration(t *testing.T) {
+	cfg := &Config{
+		JWT: JWTConfig{
+			ExpireHours:        24,
+			RefreshExpireHours: 168,
+		},
+	}
+
+	helper := NewConfigHelper(cfg)
+
+	// 测试访问令牌过期时间
+	expiration := helper.GetJWTExpiration()
+	assert.Equal(t, 24*time.Hour, expiration)
+
+	// 测试刷新令牌过期时间
+	refreshExpiration := helper.GetJWTRefreshExpiration()
+	assert.Equal(t, 168*time.Hour, refreshExpiration)
+}
+
+// TestGetAddressFunctions 测试地址获取函数
+func TestGetAddressFunctions(t *testing.T) {
+	// 测试空配置
+	AppConfig = nil
+	assert.Empty(t, GetDSN())
+	assert.Empty(t, GetRedisAddr())
+	assert.Equal(t, ":8080", GetServerAddr()) // GetServerAddr在AppConfig为nil时返回:8080
+
+	// 设置正常配置
+	AppConfig = &Config{
+		Database: DatabaseConfig{
+			MySQL: MySQLConfig{
+				Username:  "user",
+				Password:  "pass",
+				Host:      "localhost",
+				Port:      3306,
+				DBName:    "db",
+				Charset:   "utf8mb4",
+				ParseTime: true,
+				Loc:       "Local",
+			},
+		},
+		Redis: RedisConfig{
+			Host: "redis-host",
+			Port: 6379,
+		},
+		Server: ServerConfig{
+			Host: "0.0.0.0",
+			Port: 8080,
+		},
+	}
+
+	// 测试DSN生成
+	dsn := GetDSN()
+	assert.Contains(t, dsn, "user:pass@tcp(localhost:3306)/db")
+	assert.Contains(t, dsn, "allowNativePasswords=true")
+
+	// 测试Redis地址
+	redisAddr := GetRedisAddr()
+	assert.Equal(t, "redis-host:6379", redisAddr)
+
+	// 测试服务器地址
+	serverAddr := GetServerAddr()
+	assert.Equal(t, "0.0.0.0:8080", serverAddr)
 }

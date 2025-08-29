@@ -14,6 +14,19 @@ import (
 )
 
 // EmailService 邮件服务接口
+//
+// 提供完整的邮件发送和管理功能，包括：
+// 1. 邮件发送：支持纯文本、HTML和模板邮件
+// 2. 模板管理：动态加载和渲染邮件模板
+// 3. 队列管理：异步邮件发送和重试机制
+// 4. 连接池：SMTP连接池管理，提高性能
+//
+// 使用示例：
+//
+//	service := NewEmailService(config)
+//	service.Start(ctx)
+//	service.SendVerificationCode(ctx, "user@example.com", "123456")
+//	service.Stop()
 type EmailService interface {
 	// 发送邮件
 	SendEmail(ctx context.Context, to []string, subject, body string) error

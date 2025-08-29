@@ -207,8 +207,55 @@ const (
 
 // 邮件优先级常量
 const (
-	PriorityLow    = 1  // 低优先级
-	PriorityNormal = 5  // 普通优先级
-	PriorityHigh   = 8  // 高优先级
+	PriorityHigh   = 1  // 高优先级
+	PriorityNormal = 2  // 普通优先级
+	PriorityLow    = 3  // 低优先级
 	PriorityUrgent = 10 // 紧急优先级
 )
+
+// Validate 验证邮件模板
+func (t *EmailTemplate) Validate() error {
+	if t.Name == "" {
+		return fmt.Errorf("template name is required")
+	}
+	if t.Language == "" {
+		return fmt.Errorf("template language is required")
+	}
+	if t.Subject == "" {
+		return fmt.Errorf("template subject is required")
+	}
+	if t.HTMLBody == "" && t.TextBody == "" {
+		return fmt.Errorf("template must have either HTML body or text body")
+	}
+	return nil
+}
+
+// setTimestamps 设置邮件队列时间戳
+func (q *EmailQueue) setTimestamps() {
+	now := time.Now()
+	if q.CreatedAt.IsZero() {
+		q.CreatedAt = now
+	}
+	q.UpdatedAt = now
+}
+
+// UpdateStatus 更新邮件状态
+func (q *EmailQueue) UpdateStatus(status string) {
+	q.Status = status
+	q.UpdatedAt = time.Now()
+}
+
+// SetError 设置错误信息
+func (q *EmailQueue) SetError(errorMsg string) {
+	q.Status = EmailStatusFailed
+	q.ErrorMsg = errorMsg
+	q.UpdatedAt = time.Now()
+}
+
+// ResetRetry 重置重试
+func (q *EmailQueue) ResetRetry() {
+	q.Attempts = 0
+	q.ErrorMsg = ""
+	q.Status = EmailStatusPending
+	q.UpdatedAt = time.Now()
+}

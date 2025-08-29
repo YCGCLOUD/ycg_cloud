@@ -63,6 +63,9 @@ func isValidFieldName(field string) bool {
 // Transaction 执行事务
 func Transaction(fn func(tx *gorm.DB) error, opts ...*TransactionOptions) error {
 	db := GetDB()
+	if db == nil {
+		return fmt.Errorf("database connection not available")
+	}
 
 	// 获取事务选项
 	var options *TransactionOptions
@@ -111,6 +114,9 @@ func Transaction(fn func(tx *gorm.DB) error, opts ...*TransactionOptions) error 
 // TransactionWithContext 带上下文的事务执行
 func TransactionWithContext(ctx context.Context, fn func(tx *gorm.DB) error) error {
 	db := GetDB()
+	if db == nil {
+		return fmt.Errorf("database connection not available")
+	}
 
 	tx := db.WithContext(ctx).Begin()
 	if tx.Error != nil {

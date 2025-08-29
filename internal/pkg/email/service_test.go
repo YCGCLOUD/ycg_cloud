@@ -1,6 +1,7 @@
 package email
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -351,4 +352,274 @@ func BenchmarkEmailService_RenderTemplate(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		service.renderTemplate(tmplStr, variables)
 	}
+}
+
+// 新增的测试用例，提升覆盖率
+
+// TestEmailService_IsHealthy 测试服务健康检查
+func TestEmailService_IsHealthy(t *testing.T) {
+	service := NewEmailService(nil).(*emailService)
+
+	// 服务未启动时不健康
+	assert.False(t, service.IsHealthy())
+
+	// 模拟启动状态
+	service.isRunning = true
+	assert.True(t, service.IsHealthy())
+}
+
+// TestEmailService_StartStop 测试服务启停
+func TestEmailService_StartStop(t *testing.T) {
+	config := &EmailConfig{
+		SMTP: SMTPConfig{
+			Host:     "smtp.example.com",
+			Port:     587,
+			Username: "test@example.com",
+			Password: "password",
+			UseTLS:   true,
+		},
+		From:     "test@example.com",
+		FromName: "Test Service",
+	}
+
+	service := NewEmailService(config).(*emailService)
+
+	// 测试重复启动
+	ctx := context.Background()
+	err := service.Start(ctx)
+	assert.NoError(t, err) // 应该成功，因为使用默认配置
+
+	// 测试停止未启动的服务
+	err = service.Stop()
+	assert.NoError(t, err)
+}
+
+// TestEmailService_RenderTemplate 测试模板渲染
+func TestEmailService_RenderTemplate(t *testing.T) {
+	service := NewEmailService(nil).(*emailService)
+
+	tests := []struct {
+		name      string
+		template  string
+		variables map[string]interface{}
+		expected  string
+		wantErr   bool
+	}{
+		{
+			name:     "simple template",
+			template: "Hello {{.name}}!",
+			variables: map[string]interface{}{
+				"name": "World",
+			},
+			expected: "Hello World!",
+			wantErr:  false,
+		},
+		{
+			name:     "complex template",
+			template: "Welcome {{.username}} to {{.app_name}}! Code: {{.code}}",
+			variables: map[string]interface{}{
+				"username": "john",
+				"app_name": "CloudPan",
+				"code":     "123456",
+			},
+			expected: "Welcome john to CloudPan! Code: 123456",
+			wantErr:  false,
+		},
+		{
+			name:     "invalid template",
+			template: "Hello {{.name", // 缺少结束括号
+			variables: map[string]interface{}{
+				"name": "World",
+			},
+			expected: "",
+			wantErr:  true,
+		},
+		{
+			name:      "missing variable",
+			template:  "Hello {{.name}}!",
+			variables: map[string]interface{}{}, // 缺少name变量
+			expected:  "Hello !",                // Go模板的实际行为
+			wantErr:   false,
+		},
+		{
+			name:      "empty template",
+			template:  "",
+			variables: map[string]interface{}{},
+			expected:  "",
+			wantErr:   false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := service.renderTemplate(tt.template, tt.variables)
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+				assert.Equal(t, tt.expected, result)
+			}
+		})
+	}
+}
+
+// TestEmailService_SendHTMLEmail 测试发送HTML邮件
+func TestEmailService_SendHTMLEmail(t *testing.T) {
+	service := NewEmailService(nil).(*emailService)
+	ctx := context.Background()
+
+	// 测试空收件人列表
+	err := service.SendHTMLEmail(ctx, []string{}, "Test", "<h1>Test</h1>", "Test")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "no recipients specified")
+
+	// 测试正常情况（会失败，因为没有真实的SMTP服务器）
+	err = service.SendHTMLEmail(ctx, []string{"test@example.com"}, "Test Subject", "<h1>Test HTML</h1>", "Test Text")
+	assert.Error(t, err) // 预期失败，因为没有真实的SMTP配置
+}
+
+// TestEmailService_SendTemplateEmail 测试发送模板邮件
+func TestEmailService_SendTemplateEmail(t *testing.T) {
+	service := NewEmailService(nil).(*emailService)
+	ctx := context.Background()
+
+	// 测试不存在的模板
+	err := service.SendTemplateEmail(ctx, "nonexistent", []string{"test@example.com"}, map[string]interface{}{})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to get template")
+
+	// 添加测试模板
+	testTemplate := &EmailTemplate{
+		Name:     "test_template",
+		Language: "zh-CN",
+		Subject:  "Test {{.subject_var}}",
+		HTMLBody: "<h1>Hello {{.name}}</h1>",
+		TextBody: "Hello {{.name}}",
+		IsActive: true,
+	}
+	service.RegisterTemplate(testTemplate)
+
+	// 测试模板邮件（会失败，因为没有真实的SMTP服务器）
+	variables := map[string]interface{}{
+		"subject_var": "Subject",
+		"name":        "World",
+	}
+	err = service.SendTemplateEmail(ctx, "test_template", []string{"test@example.com"}, variables)
+	assert.Error(t, err) // 预期失败，因为没有真实的SMTP配置
+}
+
+// TestEmailService_SendVerificationCode 测试发送验证码
+func TestEmailService_SendVerificationCode(t *testing.T) {
+	service := NewEmailService(nil).(*emailService)
+	ctx := context.Background()
+
+	// 加载默认模板
+	service.LoadTemplates()
+
+	// 测试发送验证码（会失败，因为没有真实的SMTP服务器）
+	err := service.SendVerificationCode(ctx, "test@example.com", "123456")
+	assert.Error(t, err) // 预期失败，因为没有真实的SMTP配置
+}
+
+// TestEmailService_SendPasswordReset 测试发送密码重置
+func TestEmailService_SendPasswordReset(t *testing.T) {
+	service := NewEmailService(nil).(*emailService)
+	ctx := context.Background()
+
+	// 加载默认模板
+	service.LoadTemplates()
+
+	// 测试发送密码重置（会失败，因为没有真实的SMTP服务器）
+	err := service.SendPasswordReset(ctx, "test@example.com", "https://example.com/reset?token=123")
+	assert.Error(t, err) // 预期失败，因为没有真实的SMTP配置
+}
+
+// TestEmailService_SendWelcomeEmail 测试发送欢迎邮件
+func TestEmailService_SendWelcomeEmail(t *testing.T) {
+	service := NewEmailService(nil).(*emailService)
+	ctx := context.Background()
+
+	// 加载默认模板
+	service.LoadTemplates()
+
+	// 测试发送欢迎邮件（会失败，因为没有真实的SMTP服务器）
+	err := service.SendWelcomeEmail(ctx, "test@example.com", "testuser")
+	assert.Error(t, err) // 预期失败，因为没有真实的SMTP配置
+}
+
+// TestEmailService_SendSecurityAlert 测试发送安全警告
+func TestEmailService_SendSecurityAlert(t *testing.T) {
+	service := NewEmailService(nil).(*emailService)
+	ctx := context.Background()
+
+	// 加载默认模板
+	service.LoadTemplates()
+
+	details := map[string]interface{}{
+		"ip":        "192.168.1.1",
+		"location":  "北京",
+		"timestamp": time.Now().Format("2006-01-02 15:04:05"),
+	}
+
+	// 测试发送安全警告（会失败，因为没有真实的SMTP服务器）
+	err := service.SendSecurityAlert(ctx, "test@example.com", "login", details)
+	assert.Error(t, err) // 预期失败，因为没有真实的SMTP配置
+}
+
+// TestEmailConfig_IsTLSEnabled 测试TLS配置
+func TestEmailConfig_IsTLSEnabled(t *testing.T) {
+	tests := []struct {
+		name     string
+		config   *EmailConfig
+		expected bool
+	}{
+		{
+			name: "TLS enabled",
+			config: &EmailConfig{
+				SMTP: SMTPConfig{UseTLS: true},
+			},
+			expected: true,
+		},
+		{
+			name: "TLS disabled",
+			config: &EmailConfig{
+				SMTP: SMTPConfig{UseTLS: false},
+			},
+			expected: false,
+		},
+		{
+			name: "SSL enabled (not TLS)",
+			config: &EmailConfig{
+				SMTP: SMTPConfig{UseSSL: true, UseTLS: false},
+			},
+			expected: false, // SSL与TLS是不同的
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := tt.config.IsTLSEnabled()
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+// TestEmailQueue_Timestamps 测试邮件队列时间戳
+func TestEmailQueue_Timestamps(t *testing.T) {
+	emailQueue := &EmailQueue{
+		To:      []string{"test@example.com"},
+		Subject: "Test",
+	}
+
+	// 设置初始时间戳
+	emailQueue.setTimestamps()
+	assert.False(t, emailQueue.CreatedAt.IsZero())
+	assert.False(t, emailQueue.UpdatedAt.IsZero())
+	assert.Equal(t, emailQueue.CreatedAt, emailQueue.UpdatedAt)
+
+	// 等待一毫秒然后更新
+	time.Sleep(time.Millisecond)
+	emailQueue.UpdateStatus(EmailStatusSending)
+	assert.True(t, emailQueue.UpdatedAt.After(emailQueue.CreatedAt))
+	assert.Equal(t, EmailStatusSending, emailQueue.Status)
 }

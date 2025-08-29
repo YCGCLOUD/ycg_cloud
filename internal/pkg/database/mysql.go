@@ -21,6 +21,20 @@ var (
 )
 
 // InitMySQL 初始化MySQL连接池
+//
+// 此函数负责初始化MySQL数据库连接池，包括以下步骤：
+// 1. 创建数据库连接，包括DSN构建和GORM配置
+// 2. 配置连接池参数，优化连接数、超时时间等
+// 3. 执行后初始化设置，如时区设置、插件安装、自动迁移等
+//
+// 连接池配置说明：
+// - MaxOpenConns: 最大连接数，防止连接数过多导致数据库压力
+// - MaxIdleConns: 最大空闲连接数，保持热连接以提高响应速度
+// - ConnMaxLifetime: 连接最大生存时间，防止长时间连接被MySQL服务器关闭
+// - ConnMaxIdleTime: 连接最大空闲时间，及时释放不活跃的连接
+//
+// 返回值：
+//   - error: 初始化过程中的任何错误，包括连接失败、配置错误等
 func InitMySQL() error {
 	cfg := config.AppConfig.Database.MySQL
 
@@ -144,43 +158,86 @@ func buildDSN(cfg config.MySQLConfig) string {
 	return dsn
 }
 
-// configureConnectionPool 配置连接池参数
-func configureConnectionPool(sqlDB sqlDB, cfg config.MySQLConfig) error {
+// configureMaxOpenConns 配置最大打开连接数
+func configureMaxOpenConns(sqlDB sqlDB, maxOpenConns int) int {
 	// 设置最大打开连接数
-	// 默认值：100，防止连接数过多导致数据库压力
-	maxOpenConns := cfg.MaxOpenConns
+	// 生产环境建议值：CPU核心数 * 4 到 CPU核心数 * 8
+	// 对于云服务器，建议不超过100，避免对数据库造成过大压力
 	if maxOpenConns <= 0 {
-		maxOpenConns = 100
+		maxOpenConns = 100 // 默认值：适合中等负载的应用
+	}
+	// 安全检查：确保不超过MySQL的max_connections设置
+	if maxOpenConns > 1000 {
+		maxOpenConns = 1000
+		log.Printf("Warning: MaxOpenConns reduced to 1000 for safety")
 	}
 	sqlDB.SetMaxOpenConns(maxOpenConns)
+	return maxOpenConns
+}
 
+// configureMaxIdleConns 配置最大空闲连接数
+func configureMaxIdleConns(sqlDB sqlDB, maxIdleConns, maxOpenConns int) int {
 	// 设置最大空闲连接数
-	// 默认值：10，保持足够的空闲连接以提高响应速度
-	maxIdleConns := cfg.MaxIdleConns
+	// 建议值：MaxOpenConns的10%-30%，保持足够的热连接
 	if maxIdleConns <= 0 {
-		maxIdleConns = 10
+		maxIdleConns = maxOpenConns / 10 // 默认为最大连接数的10%
+		if maxIdleConns < 5 {
+			maxIdleConns = 5 // 最少保持5个空闲连接
+		}
+		if maxIdleConns > 25 {
+			maxIdleConns = 25 // 最多25个空闲连接，避免资源浪费
+		}
 	}
 	// 确保空闲连接数不超过最大连接数
 	if maxIdleConns > maxOpenConns {
 		maxIdleConns = maxOpenConns
 	}
 	sqlDB.SetMaxIdleConns(maxIdleConns)
+	return maxIdleConns
+}
 
+// configureConnLifetime 配置连接生命周期
+func configureConnLifetime(sqlDB sqlDB, connMaxLifetime time.Duration) time.Duration {
 	// 设置连接最大生存时间
-	// 默认值：1小时，防止长时间连接被MySQL服务器关闭
-	connMaxLifetime := cfg.ConnMaxLifetime
+	// MySQL默认的wait_timeout是8小时，我们设置1小时更安全
 	if connMaxLifetime <= 0 {
-		connMaxLifetime = time.Hour
+		connMaxLifetime = time.Hour // 默认1小时，平衡性能和稳定性
+	}
+	// 生产环境建议不超过4小时，避免长时间连接的潜在问题
+	if connMaxLifetime > 4*time.Hour {
+		connMaxLifetime = 4 * time.Hour
+		log.Printf("Warning: ConnMaxLifetime reduced to 4 hours for stability")
 	}
 	sqlDB.SetConnMaxLifetime(connMaxLifetime)
+	return connMaxLifetime
+}
 
+// configureConnIdleTime 配置连接空闲时间
+func configureConnIdleTime(sqlDB sqlDB, connMaxIdleTime, connMaxLifetime time.Duration) time.Duration {
 	// 设置连接最大空闲时间
-	// 默认值：10分钟，及时释放不活跃的连接
-	connMaxIdleTime := cfg.ConnMaxIdleTime
+	// 空闲时间过长的连接会被关闭，释放资源
 	if connMaxIdleTime <= 0 {
-		connMaxIdleTime = 10 * time.Minute
+		connMaxIdleTime = 30 * time.Minute // 默认30分钟，适合大多数Web应用
+	}
+	// 确保空闲时间不超过生存时间
+	if connMaxIdleTime > connMaxLifetime {
+		connMaxIdleTime = connMaxLifetime
 	}
 	sqlDB.SetConnMaxIdleTime(connMaxIdleTime)
+	return connMaxIdleTime
+}
+
+// configureConnectionPool 配置连接池参数
+// 数据库连接池是影响应用性能的关键因素，合理的配置可以显著提升系统性能
+func configureConnectionPool(sqlDB sqlDB, cfg config.MySQLConfig) error {
+	// 配置各项连接池参数
+	maxOpenConns := configureMaxOpenConns(sqlDB, cfg.MaxOpenConns)
+	maxIdleConns := configureMaxIdleConns(sqlDB, cfg.MaxIdleConns, maxOpenConns)
+	connMaxLifetime := configureConnLifetime(sqlDB, cfg.ConnMaxLifetime)
+	connMaxIdleTime := configureConnIdleTime(sqlDB, cfg.ConnMaxIdleTime, connMaxLifetime)
+
+	log.Printf("Connection pool configured: MaxOpen=%d, MaxIdle=%d, MaxLifetime=%v, MaxIdleTime=%v",
+		maxOpenConns, maxIdleConns, connMaxLifetime, connMaxIdleTime)
 
 	return nil
 }

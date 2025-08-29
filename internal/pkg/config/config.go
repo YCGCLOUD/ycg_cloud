@@ -15,6 +15,25 @@ var (
 )
 
 // Load 加载配置文件
+//
+// 此函数负责从多个源加载和合并配置信息，包括：
+// 1. 默认配置文件 (config.yaml)
+// 2. 环境特定配置文件 (config.dev.yaml, config.prod.yaml 等)
+// 3. 环境变量 (.env 文件和系统环境变量)
+//
+// 加载顺序和优先级：
+// 1. 默认配置文件作为基础
+// 2. 环境特定配置覆盖默认配置
+// 3. 环境变量具有最高优先级，可以覆盖所有配置
+//
+// 支持的环境变量格式：
+// - CLOUDPAN_DATABASE_MYSQL_HOST (数据库主机)
+// - CLOUDPAN_REDIS_HOST (Redis主机)
+// - CLOUDPAN_JWT_SECRET (JWT密钥)
+// 等等...
+//
+// 返回值：
+//   - error: 配置加载或验证失败时的错误信息
 func Load() error {
 	// 设置基础配置
 	if err := setupViperConfig(); err != nil {

@@ -453,3 +453,178 @@ func BenchmarkCreateEncoder(b *testing.B) {
 		_ = createEncoder(config)
 	}
 }
+
+// TestWithContext 测试从上下文提取信息
+func TestWithContext(t *testing.T) {
+	// 初始化测试logger
+	setupTestLogger(t)
+
+	// 测试空上下文
+	ctx := context.Background()
+	logger := WithContext(ctx)
+	if logger == nil {
+		t.Error("WithContext should not return nil")
+	}
+
+	// 测试带请求ID的上下文
+	ctxWithRequestID := context.WithValue(ctx, RequestIDKey, "request-123")
+	loggerWithRequestID := WithContext(ctxWithRequestID)
+	if loggerWithRequestID == nil {
+		t.Error("WithContext should not return nil when context has request ID")
+	}
+
+	// 测试带用户ID的上下文
+	ctxWithUserID := context.WithValue(ctx, UserIDKey, "user-456")
+	loggerWithUserID := WithContext(ctxWithUserID)
+	if loggerWithUserID == nil {
+		t.Error("WithContext should not return nil when context has user ID")
+	}
+
+	// 测试带请求ID和用户ID的上下文
+	ctxWithBoth := context.WithValue(ctxWithRequestID, UserIDKey, "user-456")
+	loggerWithBoth := WithContext(ctxWithBoth)
+	if loggerWithBoth == nil {
+		t.Error("WithContext should not return nil when context has both IDs")
+	}
+}
+
+// TestSyncAndClose 测试日志同步和关闭
+func TestSyncAndClose(t *testing.T) {
+	// 初始化测试logger
+	setupTestLogger(t)
+
+	// 测试Sync
+	err := Sync()
+	if err != nil {
+		t.Errorf("Sync() should not return error: %v", err)
+	}
+
+	// 测试Close
+	err = Close()
+	if err != nil {
+		t.Errorf("Close() should not return error: %v", err)
+	}
+
+	// 测试Logger为nil时的Sync
+	originalLogger := Logger
+	Logger = nil
+	err = Sync()
+	if err != nil {
+		t.Errorf("Sync() should not return error when Logger is nil: %v", err)
+	}
+	Logger = originalLogger
+}
+
+// TestConvenienceFunctions 测试便捷日志函数
+func TestConvenienceFunctions(t *testing.T) {
+	// 初始化测试logger
+	setupTestLogger(t)
+
+	// 测试各种级别的日志函数
+	Info("test info message")
+	Debug("test debug message")
+	Warn("test warn message")
+	Error("test error message")
+
+	// 注意：不测试Fatal和Panic，因为它们会终止程序或触发panic
+}
+
+// TestCreateWriteSyncer 测试WriteSyncer创建
+func TestCreateWriteSyncer(t *testing.T) {
+	tempDir := filepath.Join(os.TempDir(), "test_write_syncer")
+	logFile := filepath.Join(tempDir, "test.log")
+	defer os.RemoveAll(tempDir)
+
+	tests := []struct {
+		name   string
+		config LogConfig
+	}{
+		{
+			name: "console only",
+			config: LogConfig{
+				Output: "console",
+			},
+		},
+		{
+			name: "file only",
+			config: LogConfig{
+				Output:   "file",
+				FilePath: logFile,
+			},
+		},
+		{
+			name: "both console and file",
+			config: LogConfig{
+				Output:   "both",
+				FilePath: logFile,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			writeSyncer, err := createWriteSyncer(tt.config)
+			if err != nil {
+				t.Errorf("createWriteSyncer() error = %v", err)
+			}
+			if writeSyncer == nil {
+				t.Error("createWriteSyncer() should not return nil")
+			}
+		})
+	}
+}
+
+// TestSetupLogger 测试Logger设置
+func TestSetupLogger(t *testing.T) {
+	// 创建测试编码器和WriteSyncer
+	encoder := createEncoder(LogConfig{Format: "json"})
+	writeSyncer, _ := createWriteSyncer(LogConfig{Output: "console"})
+	level := zapcore.InfoLevel
+	config := LogConfig{
+		Level:  "info",
+		Format: "json",
+		Output: "console",
+	}
+
+	err := setupLogger(encoder, writeSyncer, level, config)
+	if err != nil {
+		t.Errorf("setupLogger() error = %v", err)
+	}
+
+	// 验证全局logger是否设置
+	if Logger == nil {
+		t.Error("Global Logger should be set after setupLogger")
+	}
+	if SugaredLogger == nil {
+		t.Error("Global SugaredLogger should be set after setupLogger")
+	}
+}
+
+// TestLogLevelEdgeCases 测试日志级别边界情况
+func TestLogLevelEdgeCases(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected zapcore.Level
+		wantErr  bool
+	}{
+		{"empty string", "", zapcore.InfoLevel, true},
+		{"whitespace", "  ", zapcore.InfoLevel, true},
+		{"mixed case", "WaRn", zapcore.WarnLevel, false},
+		{"with spaces", " info ", zapcore.InfoLevel, true}, // 空格应该被处理为错误
+		{"unknown level", "unknown", zapcore.InfoLevel, true},
+		{"special chars", "info!", zapcore.InfoLevel, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			level, err := getLogLevel(tt.input)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("getLogLevel() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if level != tt.expected {
+				t.Errorf("getLogLevel() = %v, want %v", level, tt.expected)
+			}
+		})
+	}
+}

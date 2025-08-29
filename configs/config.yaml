@@ -13,16 +13,26 @@ server:
   max_header_bytes: 1048576  # 1MB
 
 # 数据库通用配置（非敏感部分）
+# MySQL连接池优化配置：根据生产环境的并发量和负载特点调整
 database:
   mysql:
-    charset: "utf8mb4"
-    parse_time: true
-    loc: "Local"
-    max_idle_conns: 10
-    max_open_conns: 100
-    conn_max_lifetime: 3600s
-    conn_max_idle_time: 1800s
-    timezone: "Asia/Shanghai"
+    charset: "utf8mb4"        # 字符集：支持完整的Unicode，包括Emoji
+    parse_time: true           # 解析时间类型：自动转换MySQL的DATETIME到Go的time.Time
+    loc: "Local"               # 时区：使用系统本地时区
+    
+    # 连接池性能参数优化
+    # 生产环境建议：根据CPU核心数和并发量调整
+    # 对于4核CPU的中等负载应用，以下配置较为合理
+    max_idle_conns: 15         # 最大空闲连接数：保持热连接，减少建立连接的开销
+    max_open_conns: 100        # 最大连接数：防止连接数过多导致数据库压力
+    
+    # 连接生命周期管理
+    # 避免长时间连接导致的问题（如网络中断、数据库超时等）
+    conn_max_lifetime: 3600s   # 连接最大生存时间：1小时，平衡性能和稳定性
+    conn_max_idle_time: 1800s  # 连接最大空闲时间：30分钟，适合Web应用的访问模式
+    
+    # 数据库时区设置
+    timezone: "Asia/Shanghai"  # 数据库时区：与业太地区业务保持一致
     
 # Redis通用配置（非敏感部分）
 redis:

@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
@@ -50,6 +51,8 @@ func TestIntegration(t *testing.T) {
 		testPanicRecovery(t, router)
 	})
 
+	// 同步并关闭日志系统
+	logger.Sync()
 	// 清理测试日志文件
 	cleanupTestFiles()
 }
@@ -308,8 +311,12 @@ func TestLoggerIntegration(t *testing.T) {
 	err = logger.Sync()
 	assert.NoError(t, err)
 
-	// 清理测试文件
-	defer cleanupTestFiles()
+	// 清理测试文件（延迟清理以确保日志系统完全关闭）
+	defer func() {
+		// 再次同步确保所有日志都写入
+		logger.Sync()
+		cleanupTestFiles()
+	}()
 }
 
 // TestUtilsIntegration 测试工具函数集成
@@ -372,8 +379,18 @@ func TestUtilsIntegration(t *testing.T) {
 
 // cleanupTestFiles 清理测试文件
 func cleanupTestFiles() {
-	if err := os.RemoveAll("test_logs"); err != nil {
-		log.Printf("Failed to cleanup test files: %v", err)
+	// 尝试多次删除，因为Windows可能需要一些时间来释放文件句柄
+	for i := 0; i < 3; i++ {
+		if err := os.RemoveAll("test_logs"); err == nil {
+			return
+		} else if i == 2 {
+			// 最后一次失败时只记录到控制台，不影响测试结果
+			log.Printf("Warning: Failed to cleanup test files after 3 attempts: %v", err)
+		}
+		// 等待一小段时间再重试
+		if i < 2 {
+			time.Sleep(time.Millisecond * 100)
+		}
 	}
 }
 
